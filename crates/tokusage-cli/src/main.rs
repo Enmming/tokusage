@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 mod claude_hook;
 mod commands;
 mod config;
+mod log_rotate;
 mod manifest;
 mod platform;
 mod queue;

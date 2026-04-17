@@ -1,4 +1,5 @@
 use crate::commands::login;
+use crate::log_rotate;
 use crate::manifest;
 use crate::queue;
 use crate::SourceArg;
@@ -6,6 +7,11 @@ use anyhow::{Context, Result};
 use tokusage_core::{aggregator, sources, SubmitPayload, UnifiedMessage};
 
 pub fn run(dry_run: bool, source: Option<SourceArg>) -> Result<()> {
+    // Opportunistic log rotation every run (cheap stat call if file fits).
+    if let Ok(log) = manifest::log_path() {
+        log_rotate::rotate_if_needed(&log);
+    }
+
     let messages = collect(source)?;
     let payload = aggregator::build_payload(
         messages,

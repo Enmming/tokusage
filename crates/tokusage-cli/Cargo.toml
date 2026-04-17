@@ -31,4 +31,3 @@ sha2.workspace = true
 
 [dev-dependencies]
 tempfile = "3"
-mockito = "1"

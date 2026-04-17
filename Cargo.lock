@@ -1741,7 +1741,6 @@ dependencies = [
  "clap",
  "directories",
  "hostname",
- "mockito",
  "plist",
  "reqwest",
  "serde",
