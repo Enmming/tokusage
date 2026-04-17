@@ -32,19 +32,20 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - name: Install musl cross-compiler (Linux aarch64)
-        if: matrix.target == 'aarch64-unknown-linux-musl'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y musl-tools gcc-aarch64-linux-gnu
-          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-
-      - name: Install musl tools (Linux x86_64)
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get install -y musl-tools
+      - name: Install cross (Linux musl targets)
+        if: contains(matrix.target, 'musl')
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} --bin tokusage
+        shell: bash
+        run: |
+          if [[ "${{ matrix.target }}" == *musl* ]]; then
+            cross build --release --target ${{ matrix.target }} --bin tokusage
+          else
+            cargo build --release --target ${{ matrix.target }} --bin tokusage
+          fi
 
       - name: Package
         id: package
