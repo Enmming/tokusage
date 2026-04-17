@@ -21,6 +21,13 @@ use std::path::{Path, PathBuf};
 const DEFAULT_API_BASE: &str = "https://api2.cursor.sh";
 const RPC_PATH: &str = "/aiserver.v1.DashboardService/GetFilteredUsageEvents";
 
+/// Max events the Cursor RPC returns per call (probed 2026-04-17: 1000 works,
+/// 2000+ silently returns 0).
+const PAGE_SIZE: u32 = 1000;
+/// Safety cap on total pages to prevent a runaway loop if Cursor changes
+/// behavior. 20 pages * 1000 = 20k events, way more than any single user.
+const MAX_PAGES: u32 = 20;
+
 pub fn default_db_path() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|d| {
         d.home_dir()
@@ -119,21 +126,43 @@ impl From<reqwest::Error> for FetchError {
     }
 }
 
-/// Call the Cursor RPC. `api_base` should include scheme + host, e.g.
-/// `https://api2.cursor.sh` (or a mockito URL in tests).
+/// Call Cursor's GetFilteredUsageEvents RPC, paginating until we've drained
+/// every event or hit MAX_PAGES. `api_base` should include scheme + host,
+/// e.g. `https://api2.cursor.sh` (or a mockito URL in tests).
 pub async fn fetch_events(
     client: &reqwest::Client,
     jwt: &str,
     api_base: &str,
 ) -> Result<Vec<UnifiedMessage>, FetchError> {
+    let mut all = Vec::new();
+    for page in 1..=MAX_PAGES {
+        let events = fetch_page(client, jwt, api_base, page, PAGE_SIZE).await?;
+        let count = events.len();
+        all.extend(events);
+        // Cursor returns fewer than pageSize items when we hit the end.
+        if count < PAGE_SIZE as usize {
+            break;
+        }
+    }
+    Ok(all.into_iter().filter_map(event_to_unified).collect())
+}
+
+async fn fetch_page(
+    client: &reqwest::Client,
+    jwt: &str,
+    api_base: &str,
+    page: u32,
+    page_size: u32,
+) -> Result<Vec<RpcEvent>, FetchError> {
     let url = format!("{}{}", api_base, RPC_PATH);
+    let body = serde_json::json!({ "page": page, "pageSize": page_size }).to_string();
 
     let resp = client
         .post(&url)
         .header("Authorization", format!("Bearer {}", jwt))
         .header("Content-Type", "application/json")
         .header("Connect-Protocol-Version", "1")
-        .body("{}")
+        .body(body)
         .send()
         .await?;
 
@@ -146,20 +175,21 @@ pub async fn fetch_events(
 
     if !status.is_success() {
         return Err(FetchError::Other(anyhow::anyhow!(
-            "Cursor RPC returned {}: {}",
+            "Cursor RPC returned {} on page {}: {}",
             status,
+            page,
             truncate(&body_text, 400)
         )));
     }
 
     let parsed: RpcResponse = serde_json::from_str(&body_text).map_err(|e| {
         FetchError::Other(anyhow::anyhow!(
-            "could not parse Cursor RPC response: {e}. Body starts with: {}",
+            "could not parse Cursor RPC response on page {page}: {e}. Body starts with: {}",
             truncate(&body_text, 200)
         ))
     })?;
 
-    Ok(parsed.events.into_iter().filter_map(event_to_unified).collect())
+    Ok(parsed.events)
 }
 
 fn event_to_unified(ev: RpcEvent) -> Option<UnifiedMessage> {
@@ -365,5 +395,55 @@ mod tests {
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
         let msgs = fetch_events(&client, "jwt", &server.url()).await.unwrap();
         assert!(msgs.is_empty());
+    }
+
+    fn make_page(count: usize, start_ts: u64) -> String {
+        let events: Vec<String> = (0..count)
+            .map(|i| {
+                format!(
+                    r#"{{"timestamp":"{}","model":"gpt-5","tokenUsage":{{"inputTokens":1,"outputTokens":1}},"owningUser":"u"}}"#,
+                    start_ts + i as u64
+                )
+            })
+            .collect();
+        format!(
+            r#"{{"totalUsageEventsCount":{},"usageEventsDisplay":[{}]}}"#,
+            count,
+            events.join(",")
+        )
+    }
+
+    #[tokio::test]
+    async fn fetch_events_paginates_until_short_page() {
+        // Page 1 returns PAGE_SIZE (full page) → loop continues.
+        // Page 2 returns fewer → loop stops.
+        let mut server = mockito::Server::new_async().await;
+        let page1_body = make_page(PAGE_SIZE as usize, 1_700_000_000_000);
+        let page2_body = make_page(50, 1_700_000_001_000);
+
+        let m1 = server
+            .mock("POST", RPC_PATH)
+            .match_body(mockito::Matcher::PartialJsonString(
+                r#"{"page":1}"#.to_string(),
+            ))
+            .with_status(200)
+            .with_body(page1_body)
+            .create_async()
+            .await;
+        let m2 = server
+            .mock("POST", RPC_PATH)
+            .match_body(mockito::Matcher::PartialJsonString(
+                r#"{"page":2}"#.to_string(),
+            ))
+            .with_status(200)
+            .with_body(page2_body)
+            .create_async()
+            .await;
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let msgs = fetch_events(&client, "jwt", &server.url()).await.unwrap();
+        m1.assert_async().await;
+        m2.assert_async().await;
+        assert_eq!(msgs.len(), PAGE_SIZE as usize + 50);
     }
 }
