@@ -102,13 +102,30 @@ fn default_client() -> anyhow::Result<reqwest::Client> {
         .build()?)
 }
 
+/// Error returned by `fetch_events`. Split out from `anyhow::Error` so that
+/// callers can react to `Unauthorized` by re-reading the JWT (Cursor IDE may
+/// have refreshed it in the meantime) and retrying.
+#[derive(Debug, thiserror::Error)]
+pub enum FetchError {
+    #[error("Cursor JWT rejected ({status}). Reopen Cursor IDE and try again.")]
+    Unauthorized { status: reqwest::StatusCode },
+    #[error("{0}")]
+    Other(#[from] anyhow::Error),
+}
+
+impl From<reqwest::Error> for FetchError {
+    fn from(e: reqwest::Error) -> Self {
+        FetchError::Other(e.into())
+    }
+}
+
 /// Call the Cursor RPC. `api_base` should include scheme + host, e.g.
 /// `https://api2.cursor.sh` (or a mockito URL in tests).
 pub async fn fetch_events(
     client: &reqwest::Client,
     jwt: &str,
     api_base: &str,
-) -> anyhow::Result<Vec<UnifiedMessage>> {
+) -> Result<Vec<UnifiedMessage>, FetchError> {
     let url = format!("{}{}", api_base, RPC_PATH);
 
     let resp = client
@@ -121,27 +138,25 @@ pub async fn fetch_events(
         .await?;
 
     let status = resp.status();
+    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+        return Err(FetchError::Unauthorized { status });
+    }
+
     let body_text = resp.text().await?;
 
-    if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
-        anyhow::bail!(
-            "Cursor JWT rejected ({}). Open Cursor IDE and sign in again, then re-run.",
-            status
-        );
-    }
     if !status.is_success() {
-        anyhow::bail!(
+        return Err(FetchError::Other(anyhow::anyhow!(
             "Cursor RPC returned {}: {}",
             status,
             truncate(&body_text, 400)
-        );
+        )));
     }
 
     let parsed: RpcResponse = serde_json::from_str(&body_text).map_err(|e| {
-        anyhow::anyhow!(
+        FetchError::Other(anyhow::anyhow!(
             "could not parse Cursor RPC response: {e}. Body starts with: {}",
             truncate(&body_text, 200)
-        )
+        ))
     })?;
 
     Ok(parsed.events.into_iter().filter_map(event_to_unified).collect())
@@ -178,14 +193,34 @@ fn event_to_unified(ev: RpcEvent) -> Option<UnifiedMessage> {
 }
 
 /// Default scan: read the JWT from the default DB location and call the real
-/// Cursor API.
+/// Cursor API. If the first call returns 401/403, re-read the JWT once —
+/// Cursor IDE rotates its access token silently, and the value we read 30
+/// seconds ago may already be stale.
 pub async fn scan() -> ScanResult {
     let Some(db) = default_db_path() else {
         anyhow::bail!("could not resolve Cursor state DB path (no home directory)")
     };
-    let jwt = read_jwt(&db)?;
     let client = default_client()?;
-    fetch_events(&client, &jwt, DEFAULT_API_BASE).await
+
+    let jwt = read_jwt(&db)?;
+    match fetch_events(&client, &jwt, DEFAULT_API_BASE).await {
+        Ok(msgs) => Ok(msgs),
+        Err(FetchError::Unauthorized { .. }) => {
+            tracing::info!("Cursor JWT rejected; re-reading from SQLite and retrying once");
+            let fresh_jwt = read_jwt(&db)?;
+            if fresh_jwt == jwt {
+                anyhow::bail!(
+                    "Cursor JWT rejected and no newer token available in Cursor IDE's state DB. \
+                     Open Cursor IDE and sign in again, then re-run."
+                );
+            }
+            match fetch_events(&client, &fresh_jwt, DEFAULT_API_BASE).await {
+                Ok(msgs) => Ok(msgs),
+                Err(e) => Err(e.into()),
+            }
+        }
+        Err(FetchError::Other(e)) => Err(e),
+    }
 }
 
 fn truncate(s: &str, max: usize) -> String {
@@ -315,7 +350,7 @@ mod tests {
             .await;
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
         let err = fetch_events(&client, "bad", &server.url()).await.unwrap_err();
-        assert!(format!("{err}").contains("sign in"), "got: {err}");
+        assert!(matches!(err, FetchError::Unauthorized { .. }), "got: {err:?}");
     }
 
     #[tokio::test]
