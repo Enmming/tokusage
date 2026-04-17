@@ -55,6 +55,8 @@ fn collect_codex() -> Result<Vec<UnifiedMessage>> {
 }
 
 fn collect_cursor() -> Result<Vec<UnifiedMessage>> {
-    // Cursor is async (HTTP), will be wired up in M3.
-    Err(anyhow::anyhow!("cursor source: not yet implemented (M3)"))
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(sources::cursor::scan())
 }
