@@ -25,6 +25,8 @@ jobs:
             os: ubuntu-24.04
           - target: aarch64-unknown-linux-musl
             os: ubuntu-24.04
+          - target: x86_64-pc-windows-msvc
+            os: windows-2022
 
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +57,11 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           STAGE="tokusage-${VERSION}-${{ matrix.target }}"
           mkdir "$STAGE"
-          cp "target/${{ matrix.target }}/release/tokusage" "$STAGE/"
+          if [[ "${{ matrix.target }}" == *windows* ]]; then
+            cp "target/${{ matrix.target }}/release/tokusage.exe" "$STAGE/"
+          else
+            cp "target/${{ matrix.target }}/release/tokusage" "$STAGE/"
+          fi
           cp README.md LICENSE "$STAGE/" 2>/dev/null || true
           tar czf "${STAGE}.tar.gz" "$STAGE"
           if command -v shasum >/dev/null; then
