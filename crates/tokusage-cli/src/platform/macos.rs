@@ -10,7 +10,7 @@ use plist::Value;
 use std::path::PathBuf;
 use std::process::Command;
 
-pub const LABEL: &str = "com.gd.tokusage";
+pub const LABEL: &str = "com.Enmming.tokusage";
 /// Every 30 minutes.
 pub const INTERVAL_SECS: i64 = 1800;
 

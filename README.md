@@ -23,7 +23,7 @@ configured endpoint every 30 minutes (via `launchd`).
 ## Install
 
 ```bash
-curl -sSL https://github.com/gd/tokusage/releases/latest/download/install.sh | bash
+curl -sSL https://github.com/Enmming/tokusage/releases/latest/download/install.sh | bash
 ```
 
 Downloads the right platform binary, verifies sha256, installs to

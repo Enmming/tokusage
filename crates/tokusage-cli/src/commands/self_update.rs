@@ -7,7 +7,7 @@
 use anyhow::{Context, Result};
 use std::process::Command;
 
-const REPO: &str = "gd/tokusage";
+const REPO: &str = "Enmming/tokusage";
 
 pub fn run() -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");

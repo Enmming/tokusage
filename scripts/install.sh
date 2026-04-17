@@ -3,16 +3,16 @@
 # tokusage installer. Downloads the latest release binary from GitHub and
 # puts it in ~/.local/bin. Usage:
 #
-#   curl -sSL https://github.com/gd/tokusage/releases/latest/download/install.sh | bash
+#   curl -sSL https://github.com/Enmming/tokusage/releases/latest/download/install.sh | bash
 #
 # Environment overrides:
 #   TOKUSAGE_VERSION   : pin to a specific tag like "v0.1.0" (default: latest)
-#   TOKUSAGE_REPO      : override "gd/tokusage"
+#   TOKUSAGE_REPO      : override "Enmming/tokusage"
 #   TOKUSAGE_BIN_DIR   : override "$HOME/.local/bin"
 
 set -euo pipefail
 
-REPO="${TOKUSAGE_REPO:-gd/tokusage}"
+REPO="${TOKUSAGE_REPO:-Enmming/tokusage}"
 BIN_DIR="${TOKUSAGE_BIN_DIR:-$HOME/.local/bin}"
 VERSION="${TOKUSAGE_VERSION:-latest}"
 

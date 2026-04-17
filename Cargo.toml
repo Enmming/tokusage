@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["tokusage contributors"]
 license = "MIT"
-repository = "https://github.com/gd/tokusage"
+repository = "https://github.com/Enmming/tokusage"
 rust-version = "1.82"
 
 [workspace.dependencies]
