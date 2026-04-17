@@ -3,3 +3,11 @@
 Cargo.lock.bak
 .DS_Store
 /scripts/mock-data/
+
+# Python backend
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.pytest_cache/
+backend/*.egg-info/
+backend/.env
