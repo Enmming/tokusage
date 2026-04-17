@@ -27,6 +27,10 @@ walkdir = "2"
 plist = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+toml = "0.8"
+uuid = { version = "1", features = ["v4"] }
+hostname = "0.4"
+sha2 = "0.10"
 
 [profile.release]
 lto = "thin"
