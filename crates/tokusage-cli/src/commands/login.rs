@@ -1,4 +1,4 @@
-use crate::config::{self, Config};
+use crate::config;
 use anyhow::{Context, Result};
 use std::io::{self, Write};
 
