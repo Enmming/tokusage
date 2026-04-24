@@ -3,7 +3,6 @@ use anyhow::Result;
 
 pub fn run() -> Result<()> {
     println!("tokusage {}", env!("CARGO_PKG_VERSION"));
-    println!("  host id     : {}", manifest::host_id());
 
     // Config
     match config::load() {
@@ -16,10 +15,7 @@ pub fn run() -> Result<()> {
                 .unwrap_or_else(|| "(not set)".to_string());
             println!("  api url     : {}", url);
             println!("  api token   : {}", token);
-            println!(
-                "  config file : {}",
-                config::config_path()?.display()
-            );
+            println!("  config file : {}", config::config_path()?.display());
         }
         Err(e) => println!("  config      : error loading: {}", e),
     }

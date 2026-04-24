@@ -1,34 +1,71 @@
 # tokusage backend
 
-Minimum API that receives `POST /api/submit` from the CLI, stores
-per-(host, date, client, model, provider) aggregates, and exposes a
-`GET /api/summary` sanity endpoint. Point Metabase / Grafana at the
-Postgres `daily_usage` table for dashboards.
+Minimum API that receives `POST /api/submit` from the CLI and stores raw
+usage events. Reporting is handled out-of-band by a summary script that
+recomputes totals from `raw_usage_events`.
 
 ## Endpoints
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
 | `GET` | `/health` | none | liveness probe |
-| `POST` | `/api/submit` | Bearer | accept CLI payload, UPSERT into `daily_usage` |
-| `GET` | `/api/summary` | Bearer | simple totals — row count, tokens, cost, unique hosts |
+| `POST` | `/api/submit` | Bearer | accept CLI payload, store raw events, ignore duplicates, audit conflicts |
 
-Request body: see the CLI's README.md "Data sent" section. Server is
-lenient with extra fields (Pydantic ignores unknowns).
+Request body shape:
+
+```json
+{
+  "client_version": "0.2.0",
+  "submitted_at": "2026-04-23T10:30:00Z",
+  "events": [
+    {
+      "source": "claude",
+      "event_key": "claude:4d4d5d59-8c2d-4c85-a8b0-3a0d8e8f95cb",
+      "event_ts": "2026-04-23T10:28:41Z",
+      "session_key": "claude:sha256:abcd1234",
+      "seq": 128,
+      "model": "claude-opus-4-7",
+      "provider": "anthropic",
+      "tokens": {
+        "input": 6,
+        "output": 197,
+        "cache_read": 16757,
+        "cache_write": 10792,
+        "reasoning": 0
+      },
+      "cost_cents": 0.0,
+      "raw_payload": {
+        "request_id": "req_abc",
+        "message_id": "msg_xyz",
+        "uuid": "4d4d5d59-8c2d-4c85-a8b0-3a0d8e8f95cb"
+      }
+    }
+  ]
+}
+```
 
 ## Storage model
 
-Two tables (see `app/models.py`):
+Three tables (see `app/models.py`):
 
-- **`daily_usage`** — canonical aggregate, unique on
-  `(host_id, date, client, model, provider)`. UPSERT uses
-  `GREATEST(existing, incoming)` per column, so replaying an older payload
-  never shrinks recorded totals.
-- **`submissions`** — raw ledger of each POST for audit / replay.
+- **`user_tokens`** — bearer-token registry. The service stores
+  `token_hash`, `token_hint`, `team_id`, `user_label`, and lifecycle fields.
+- **`raw_usage_events`** — the source of truth. Unique on
+  `(user_token_id, source, event_key)`.
+- **`conflict_events`** — audit table for "same key, different content".
 
-Note: the UPSERT expression uses Postgres `ON CONFLICT DO UPDATE`. Tests
-run against SQLite in-memory which also supports this syntax; production
-targets Postgres 17.
+`session_key` and `seq` are retained on each raw event for audit, but are
+excluded from duplicate/conflict hashing so the same logical event can be
+mirrored across multiple source files without producing false conflicts.
+
+Current source semantics:
+
+- `Claude` emits one final event per logical assistant response. The raw unique id is the transcript row `uuid`, while `request_id + message_id` is only the in-file streaming group used to pick the final snapshot.
+- `Codex` emits one event per non-empty `token_count` delta. The stored `event_key` is a synthesized composite of `session`, logical turn label, `timestamp`, and a usage fingerprint; same-timestamp twin emissions with identical usage are collapsed before insert.
+- `Cursor` emits one event per dashboard usage row. The stored `event_key` is `timestamp + owning_user + model + kind + ui/headless`, which is the best identity available in Cursor's current payload shape.
+
+`POST /api/submit` does not aggregate and does not maintain a precomputed
+summary table.
 
 ## Local dev
 
@@ -41,14 +78,19 @@ docker compose up --build
 # Health check
 curl http://127.0.0.1:8080/health
 
+# Create a user token
+.venv/bin/python scripts/create_user_token.py \
+  --team team-a \
+  --user alice
+
 # Submit (pretend you're the CLI)
 curl -X POST http://127.0.0.1:8080/api/submit \
-  -H "Authorization: Bearer devtoken" \
+  -H "Authorization: Bearer <plain-token-from-create_user_token>" \
   -H "Content-Type: application/json" \
-  -d '{"meta":{...},"contributions":[...]}'
+  -d '{"client_version":"0.2.0","submitted_at":"2026-04-23T10:30:00Z","events":[...]}'
 
-curl http://127.0.0.1:8080/api/summary \
-  -H "Authorization: Bearer devtoken"
+# Recompute summaries on demand
+.venv/bin/python scripts/usage_summary.py --from 2026-04-01 --to 2026-04-30
 ```
 
 ## Bare metal (no docker)
@@ -73,14 +115,15 @@ In-memory SQLite. No docker / Postgres needed for CI.
 
 ## Auth
 
-Bearer token whitelist via `TOKUSAGE_VALID_TOKENS` (comma-separated).
-Replace with a proper tokens table + admin UI in Phase 2.
+Bearer tokens are backed by the `user_tokens` table. Use
+`scripts/create_user_token.py` to create a token and hand the
+plain token to the user once.
 
 ## Wiring with the CLI
 
-On the employee's machine:
+On the user's machine:
 ```bash
-tokusage login --api-url https://tokusage.yourcorp.com --token <their-token>
+tokusage login --api-url https://tokusage.yourteam.internal --token <user-token>
 ```
 
-The CLI sends `Authorization: Bearer <their-token>` on every submit.
+The CLI sends `Authorization: Bearer <user-token>` on every submit.

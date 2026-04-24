@@ -6,7 +6,7 @@
 #   curl -sSL https://github.com/Enmming/tokusage/releases/latest/download/install.sh | bash
 #
 # Environment overrides:
-#   TOKUSAGE_VERSION   : pin to a specific tag like "v0.1.0" (default: latest)
+#   TOKUSAGE_VERSION   : pin to a specific tag like "v0.2.0" (default: latest)
 #   TOKUSAGE_REPO      : override "Enmming/tokusage"
 #   TOKUSAGE_BIN_DIR   : override "$HOME/.local/bin"
 
@@ -96,7 +96,7 @@ esac
 
 cat <<'EOF'
 Next steps:
-  tokusage login   # configure your company API endpoint + token
+  tokusage login   # configure your team's API endpoint + user token
   tokusage init    # install launchd scheduler (+ optional Claude Code hook)
   tokusage submit  # send the first payload immediately
 EOF

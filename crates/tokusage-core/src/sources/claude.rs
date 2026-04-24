@@ -8,6 +8,8 @@ use super::ScanResult;
 use crate::model::{Client, TokenBreakdown, UnifiedMessage};
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -20,6 +22,7 @@ pub fn default_root() -> Option<PathBuf> {
 struct ClaudeEntry {
     #[serde(rename = "type")]
     entry_type: String,
+    uuid: Option<String>,
     timestamp: Option<String>,
     message: Option<ClaudeMessage>,
     #[serde(rename = "requestId")]
@@ -54,6 +57,7 @@ pub fn scan(root: &Path) -> ScanResult {
     }
 
     let mut messages = Vec::new();
+    let mut seen_event_keys = HashSet::new();
 
     for entry in WalkDir::new(root).into_iter().filter_map(|e| e.ok()) {
         if !entry.file_type().is_file() {
@@ -64,19 +68,35 @@ pub fn scan(root: &Path) -> ScanResult {
             continue;
         }
 
-        if let Err(err) = parse_file_into(path, &mut messages) {
-            tracing::warn!(?path, error = %err, "failed to parse Claude JSONL");
+        match parse_file(root, path) {
+            Ok(file_messages) => {
+                for message in file_messages {
+                    if seen_event_keys.insert(message.event_key.clone()) {
+                        messages.push(message);
+                    }
+                }
+            }
+            Err(err) => {
+                tracing::warn!(?path, error = %err, "failed to parse Claude JSONL");
+            }
         }
     }
 
     Ok(messages)
 }
 
-fn parse_file_into(path: &Path, out: &mut Vec<UnifiedMessage>) -> anyhow::Result<()> {
+fn parse_file(root: &Path, path: &Path) -> anyhow::Result<Vec<UnifiedMessage>> {
     let file = std::fs::File::open(path)?;
     let reader = BufReader::new(file);
+    let relative_path = path
+        .strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/");
+    let mut event_index: HashMap<String, usize> = HashMap::new();
+    let mut file_messages = Vec::new();
 
-    for line in reader.lines() {
+    for (line_index, line) in reader.lines().enumerate() {
         let line = match line {
             Ok(l) if !l.trim().is_empty() => l,
             _ => continue,
@@ -87,19 +107,37 @@ fn parse_file_into(path: &Path, out: &mut Vec<UnifiedMessage>) -> anyhow::Result
             Err(_) => continue,
         };
 
-        if let Some(msg) = to_unified(entry) {
-            out.push(msg);
+        if let Some(parsed) = to_unified(entry, &relative_path, line_index + 1) {
+            if let Some(existing_index) = event_index.get(&parsed.logical_key).copied() {
+                // Claude JSONL often repeats the same logical request/message while
+                // streaming. Keep only the latest snapshot so submit emits one raw
+                // event per logical Claude response.
+                file_messages[existing_index] = parsed.message;
+            } else {
+                event_index.insert(parsed.logical_key, file_messages.len());
+                file_messages.push(parsed.message);
+            }
         }
     }
 
-    Ok(())
+    Ok(file_messages)
 }
 
-fn to_unified(entry: ClaudeEntry) -> Option<UnifiedMessage> {
+struct ParsedClaudeMessage {
+    logical_key: String,
+    message: UnifiedMessage,
+}
+
+fn to_unified(
+    entry: ClaudeEntry,
+    relative_path: &str,
+    line_number: usize,
+) -> Option<ParsedClaudeMessage> {
     if entry.entry_type != "assistant" {
         return None;
     }
 
+    let uuid = entry.uuid?;
     let message = entry.message?;
     let usage = message.usage?;
     let model = message.model?;
@@ -108,20 +146,33 @@ fn to_unified(entry: ClaudeEntry) -> Option<UnifiedMessage> {
     let ts_str = entry.timestamp?;
     let timestamp = parse_timestamp(&ts_str)?;
 
-    Some(UnifiedMessage {
-        client: Client::Claude,
-        model,
-        provider: "anthropic".to_string(),
-        timestamp,
-        tokens: TokenBreakdown {
-            input: usage.input_tokens,
-            output: usage.output_tokens,
-            cache_read: usage.cache_read_input_tokens,
-            cache_write: usage.cache_creation_input_tokens,
-            reasoning: 0,
+    Some(ParsedClaudeMessage {
+        logical_key: format!("claude:{}:{}", request_id, msg_id),
+        message: UnifiedMessage {
+            client: Client::Claude,
+            event_key: format!("claude:{}", uuid),
+            session_key: Some(format!(
+                "claude:sha256:{}",
+                sha256_hex(relative_path.as_bytes())
+            )),
+            seq: Some(line_number as u64),
+            model,
+            provider: "anthropic".to_string(),
+            timestamp,
+            tokens: TokenBreakdown {
+                input: usage.input_tokens,
+                output: usage.output_tokens,
+                cache_read: usage.cache_read_input_tokens,
+                cache_write: usage.cache_creation_input_tokens,
+                reasoning: 0,
+            },
+            cost_cents: 0.0, // Priced server-side or by a future pricing module.
+            raw_payload: serde_json::json!({
+                "request_id": request_id,
+                "message_id": msg_id,
+                "uuid": uuid,
+            }),
         },
-        cost_cents: 0.0, // Priced server-side or by a future pricing module.
-        dedup_key: format!("claude:{}:{}", request_id, msg_id),
     })
 }
 
@@ -129,6 +180,12 @@ fn parse_timestamp(s: &str) -> Option<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(s)
         .ok()
         .map(|dt| dt.with_timezone(&Utc))
+}
+
+fn sha256_hex(input: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(input);
+    format!("{:x}", hasher.finalize())
 }
 
 #[cfg(test)]
@@ -147,8 +204,8 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let jsonl = r#"{"type":"permission-mode","permissionMode":"default"}
 {"type":"user","timestamp":"2026-04-16T16:17:30Z","message":{"content":"hi"}}
-{"type":"assistant","timestamp":"2026-04-16T16:17:41.228Z","requestId":"req_A","message":{"id":"msg_1","model":"claude-opus-4-7","usage":{"input_tokens":6,"output_tokens":197,"cache_read_input_tokens":16757,"cache_creation_input_tokens":10792}}}
-{"type":"assistant","timestamp":"2026-04-16T16:18:00Z","requestId":"req_B","message":{"id":"msg_2","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":50}}}
+{"type":"assistant","uuid":"uuid-1","timestamp":"2026-04-16T16:17:41.228Z","requestId":"req_A","message":{"id":"msg_1","model":"claude-opus-4-7","usage":{"input_tokens":6,"output_tokens":197,"cache_read_input_tokens":16757,"cache_creation_input_tokens":10792}}}
+{"type":"assistant","uuid":"uuid-2","timestamp":"2026-04-16T16:18:00Z","requestId":"req_B","message":{"id":"msg_2","model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":50}}}
 "#;
         write_jsonl(tmp.path(), "session.jsonl", jsonl);
 
@@ -162,11 +219,20 @@ mod tests {
         assert_eq!(first.tokens.output, 197);
         assert_eq!(first.tokens.cache_read, 16757);
         assert_eq!(first.tokens.cache_write, 10792);
-        assert_eq!(first.dedup_key, "claude:req_A:msg_1");
+        assert_eq!(first.event_key, "claude:uuid-1");
+        assert_eq!(
+            first.session_key.as_deref(),
+            Some("claude:sha256:fc378a709b7d6f3aad1c8d1cc459e1b10ba6685b2ea5a7fe7a143d95fa6f4237")
+        );
+        assert_eq!(first.seq, Some(3));
+        assert_eq!(first.raw_payload["request_id"], "req_A");
+        assert_eq!(first.raw_payload["message_id"], "msg_1");
+        assert_eq!(first.raw_payload["uuid"], "uuid-1");
 
         let second = &messages[1];
         assert_eq!(second.tokens.cache_read, 0);
-        assert_eq!(second.dedup_key, "claude:req_B:msg_2");
+        assert_eq!(second.event_key, "claude:uuid-2");
+        assert_eq!(second.seq, Some(4));
     }
 
     #[test]
@@ -186,7 +252,7 @@ mod tests {
     #[test]
     fn walks_nested_directories() {
         let tmp = TempDir::new().unwrap();
-        let jsonl = r#"{"type":"assistant","timestamp":"2026-04-16T16:17:41Z","requestId":"req_A","message":{"id":"msg_1","model":"claude-opus-4-7","usage":{"input_tokens":1,"output_tokens":1}}}"#;
+        let jsonl = r#"{"type":"assistant","uuid":"uuid-1","timestamp":"2026-04-16T16:17:41Z","requestId":"req_A","message":{"id":"msg_1","model":"claude-opus-4-7","usage":{"input_tokens":1,"output_tokens":1}}}"#;
         write_jsonl(tmp.path(), "-Users-foo/session1.jsonl", jsonl);
         write_jsonl(
             tmp.path(),
@@ -195,7 +261,7 @@ mod tests {
         );
 
         let messages = scan(tmp.path()).unwrap();
-        assert_eq!(messages.len(), 2);
+        assert_eq!(messages.len(), 1);
     }
 
     #[test]
@@ -209,11 +275,31 @@ mod tests {
     fn malformed_lines_are_skipped() {
         let tmp = TempDir::new().unwrap();
         let jsonl = r#"not json at all
-{"type":"assistant","timestamp":"2026-04-16T16:17:41Z","requestId":"req_A","message":{"id":"msg_1","model":"claude-opus-4-7","usage":{"input_tokens":1,"output_tokens":1}}}
+{"type":"assistant","uuid":"uuid-1","timestamp":"2026-04-16T16:17:41Z","requestId":"req_A","message":{"id":"msg_1","model":"claude-opus-4-7","usage":{"input_tokens":1,"output_tokens":1}}}
 {broken"#;
         write_jsonl(tmp.path(), "x.jsonl", jsonl);
 
         let messages = scan(tmp.path()).unwrap();
         assert_eq!(messages.len(), 1);
+    }
+
+    #[test]
+    fn keeps_latest_snapshot_for_repeated_logical_event() {
+        let tmp = TempDir::new().unwrap();
+        let jsonl = r#"{"type":"assistant","uuid":"uuid-1","timestamp":"2026-04-16T16:17:41Z","requestId":"req_A","message":{"id":"msg_1","model":"claude-opus-4-7","usage":{"input_tokens":1,"output_tokens":1}}}
+{"type":"assistant","uuid":"uuid-2","timestamp":"2026-04-16T16:17:42Z","requestId":"req_A","message":{"id":"msg_1","model":"claude-opus-4-7","usage":{"input_tokens":1,"output_tokens":99}}}
+"#;
+        write_jsonl(tmp.path(), "session.jsonl", jsonl);
+
+        let messages = scan(tmp.path()).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].event_key, "claude:uuid-2");
+        assert_eq!(messages[0].tokens.output, 99);
+        assert_eq!(messages[0].seq, Some(2));
+        assert_eq!(
+            messages[0].timestamp.to_rfc3339(),
+            "2026-04-16T16:17:42+00:00"
+        );
+        assert_eq!(messages[0].raw_payload["uuid"], "uuid-2");
     }
 }

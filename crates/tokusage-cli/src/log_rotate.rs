@@ -76,6 +76,10 @@ mod tests {
 
         rotate_if_needed(&log);
         let new_rotated = fs::read(&rotated).unwrap();
-        assert_eq!(new_rotated.len(), MAX_BYTES as usize + 1, "should be the new large file");
+        assert_eq!(
+            new_rotated.len(),
+            MAX_BYTES as usize + 1,
+            "should be the new large file"
+        );
     }
 }

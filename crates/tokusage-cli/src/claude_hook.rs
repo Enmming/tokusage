@@ -12,8 +12,7 @@ use std::path::{Path, PathBuf};
 const SENTINEL: &str = "_tokusage_managed";
 
 pub fn settings_path() -> Result<PathBuf> {
-    let dirs = directories::BaseDirs::new()
-        .context("could not determine user home directory")?;
+    let dirs = directories::BaseDirs::new().context("could not determine user home directory")?;
     Ok(dirs.home_dir().join(".claude/settings.json"))
 }
 
@@ -53,10 +52,7 @@ pub fn inject(binary_path: &Path) -> Result<bool> {
     let groups = stop.as_array_mut().unwrap();
     groups.retain(|g| !is_tokusage_group(g));
 
-    let command = format!(
-        "{} submit > /dev/null 2>&1 &",
-        binary_path.display()
-    );
+    let command = format!("{} submit > /dev/null 2>&1 &", binary_path.display());
     groups.push(json!({
         SENTINEL: true,
         "hooks": [
@@ -82,8 +78,8 @@ pub fn remove() -> Result<bool> {
     }
 
     let text = fs::read_to_string(&path)?;
-    let mut settings: Value = serde_json::from_str(&text)
-        .with_context(|| format!("parsing {}", path.display()))?;
+    let mut settings: Value =
+        serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
 
     let Some(hooks) = settings
         .as_object_mut()
@@ -144,9 +140,10 @@ mod tests {
         let bin = home.join("bin/tokusage");
         inject(&bin).unwrap();
 
-        let v: Value =
-            serde_json::from_str(&std::fs::read_to_string(home.join(".claude/settings.json")).unwrap())
-                .unwrap();
+        let v: Value = serde_json::from_str(
+            &std::fs::read_to_string(home.join(".claude/settings.json")).unwrap(),
+        )
+        .unwrap();
         let groups = v["hooks"]["Stop"].as_array().unwrap();
         assert_eq!(groups.len(), 2, "user group + tokusage group");
         assert!(groups.iter().any(|g| g[SENTINEL].as_bool() == Some(true)));
@@ -156,17 +153,19 @@ mod tests {
 
         // Re-inject should not duplicate.
         inject(&bin).unwrap();
-        let v: Value =
-            serde_json::from_str(&std::fs::read_to_string(home.join(".claude/settings.json")).unwrap())
-                .unwrap();
+        let v: Value = serde_json::from_str(
+            &std::fs::read_to_string(home.join(".claude/settings.json")).unwrap(),
+        )
+        .unwrap();
         assert_eq!(v["hooks"]["Stop"].as_array().unwrap().len(), 2);
 
         // Remove should only take tokusage group.
         let removed = remove().unwrap();
         assert!(removed);
-        let v: Value =
-            serde_json::from_str(&std::fs::read_to_string(home.join(".claude/settings.json")).unwrap())
-                .unwrap();
+        let v: Value = serde_json::from_str(
+            &std::fs::read_to_string(home.join(".claude/settings.json")).unwrap(),
+        )
+        .unwrap();
         let groups = v["hooks"]["Stop"].as_array().unwrap();
         assert_eq!(groups.len(), 1);
         assert_eq!(

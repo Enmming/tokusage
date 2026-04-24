@@ -1,7 +1,7 @@
 # tokusage
 
 Scan your local AI coding tool session files, merge them with the live Cursor
-dashboard API, and POST aggregated usage to your company's internal endpoint
+dashboard API, and POST raw usage events to your team's internal endpoint
 on a schedule. Sources: **Claude Code**, **Codex CLI**, **Cursor IDE**.
 
 No cookies to copy, no dashboards to open — once a day you run `tokusage init`
@@ -14,11 +14,11 @@ For each AI tool:
 | Tool | How tokusage gets the data |
 |---|---|
 | Claude Code | Parses `~/.claude/projects/**/*.jsonl` for assistant entries with `usage`. |
-| Codex CLI   | Parses `$CODEX_HOME/sessions/**/*.jsonl` for per-turn `last_token_usage`. |
+| Codex CLI   | Parses `$CODEX_HOME/sessions/**/*.jsonl` for non-empty `last_token_usage` snapshots. |
 | Cursor IDE  | Reads the JWT Cursor IDE stores in its SQLite state DB, then calls `api2.cursor.sh/aiserver.v1.DashboardService/GetFilteredUsageEvents`. |
 
 All three are normalized into a single payload and POSTed to your
-configured endpoint every 30 minutes (via `launchd`).
+configured endpoint every 30 minutes.
 
 ## Install
 
@@ -29,13 +29,13 @@ curl -sSL https://github.com/Enmming/tokusage/releases/latest/download/install.s
 Downloads the right platform binary, verifies sha256, installs to
 `~/.local/bin/tokusage`, strips macOS Gatekeeper quarantine.
 
-Pin a version with `TOKUSAGE_VERSION=v0.1.0`; override the install directory
+Pin a version with `TOKUSAGE_VERSION=v0.2.0`; override the install directory
 with `TOKUSAGE_BIN_DIR=...`.
 
 ## First-time setup
 
 ```bash
-tokusage login   # enter your company API URL and token (saved to ~/.config/tokusage/config.toml)
+tokusage login   # enter your team's API URL and user token (saved to ~/.config/tokusage/config.toml)
 tokusage init    # install launchd scheduler; optionally inject Claude Code Stop hook
 tokusage submit  # send the first payload immediately
 ```
@@ -70,36 +70,44 @@ directory, and queue. The binary itself is left for you to remove.
 ## Data sent
 
 Every 30 minutes tokusage POSTs a JSON payload to
-`<api_url>/api/submit` with `Authorization: Bearer <token>`:
+`<api_url>/api/submit` with `Authorization: Bearer <user_token>`:
 
 ```json
 {
-  "meta": {
-    "generated_at": "2026-04-17T10:30:00Z",
-    "client_version": "0.1.0",
-    "host_id": "38b3310301759227",
-    "date_range": { "start": "2026-04-17", "end": "2026-04-17" }
-  },
-  "contributions": [
+  "client_version": "0.2.0",
+  "submitted_at": "2026-04-17T10:30:00Z",
+  "events": [
     {
-      "date": "2026-04-17",
-      "client": "claude",
+      "source": "claude",
+      "event_key": "claude:4d4d5d59-8c2d-4c85-a8b0-3a0d8e8f95cb",
+      "event_ts": "2026-04-17T10:29:58Z",
+      "session_key": "claude:sha256:fc378a709b7d6f3aad1c8d1cc459e1b10ba6685b2ea5a7fe7a143d95fa6f4237",
+      "seq": 128,
       "model": "claude-opus-4-7",
       "provider": "anthropic",
       "tokens": { "input": 6, "output": 197, "cache_read": 16757, "cache_write": 10792, "reasoning": 0 },
       "cost_cents": 0.0,
-      "message_count": 1,
-      "dedup_keys": ["claude:req_xxx:msg_yyy"]
+      "raw_payload": { "request_id": "req_xxx", "message_id": "msg_yyy", "uuid": "4d4d5d59-8c2d-4c85-a8b0-3a0d8e8f95cb" }
     }
   ]
 }
 ```
 
-`host_id` is `sha256(username:hostname)` truncated to 16 hex chars — no
-raw username is sent.
+The backend stores raw events, ignores exact duplicates for the same
+`event_key`, and audits same-key/different-content conflicts separately.
+`session_key` and `seq` are stored for audit, but do not affect
+duplicate/conflict classification.
 
-Server-side UPSERT on `dedup_keys` handles cross-submission dedup so the
-client can stay stateless and idempotent.
+Per-source identity rules:
+
+- `Claude`: `event_key` is the assistant row `uuid`. tokusage still groups by `requestId + message.id` inside one JSONL file so streamed snapshots collapse to the final row before submit.
+- `Codex`: `event_key` is `session + logical turn + timestamp + usage fingerprint`. Multiple non-empty `token_count` deltas from the same turn are preserved; same-timestamp twins with identical usage are collapsed before submit.
+- `Cursor`: `event_key` is `timestamp + owningUser + model + kind + ui/headless`. That is the best identity Cursor currently exposes in its usage payload; `session_key` and `seq` stay null.
+
+Cursor connectivity notes:
+
+- tokusage bypasses system proxies for Cursor by default because `reqwest + rustls` frequently fails on proxy TLS handshakes while direct access to `api2.cursor.sh` still works.
+- If your network really requires a proxy for Cursor, set `TOKUSAGE_CURSOR_USE_PROXY=1`.
 
 ## Dev
 

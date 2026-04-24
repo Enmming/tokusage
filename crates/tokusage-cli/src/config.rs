@@ -12,8 +12,7 @@ pub struct Config {
 }
 
 pub fn config_dir() -> Result<PathBuf> {
-    let dirs = directories::BaseDirs::new()
-        .context("could not determine user home directory")?;
+    let dirs = directories::BaseDirs::new().context("could not determine user home directory")?;
     Ok(dirs.home_dir().join(".config/tokusage"))
 }
 
@@ -26,10 +25,9 @@ pub fn load() -> Result<Config> {
     if !path.exists() {
         return Ok(Config::default());
     }
-    let text = fs::read_to_string(&path)
-        .with_context(|| format!("reading {}", path.display()))?;
-    let cfg: Config = toml::from_str(&text)
-        .with_context(|| format!("parsing {}", path.display()))?;
+    let text = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    let cfg: Config =
+        toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
     Ok(cfg)
 }
 

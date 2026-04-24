@@ -18,10 +18,7 @@ pub fn run(api_url: Option<String>, token: Option<String>) -> Result<()> {
     cfg.api_token = Some(token.trim().to_string());
     config::save(&cfg)?;
 
-    println!(
-        "Saved credentials to {}",
-        config::config_path()?.display()
-    );
+    println!("Saved credentials to {}", config::config_path()?.display());
     Ok(())
 }
 

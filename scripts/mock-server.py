@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Minimal mock server for `tokusage submit` during Phase 1.
+Minimal mock server for `tokusage submit`.
 
 Listens on 127.0.0.1:8080, accepts `POST /api/submit` with
 `Authorization: Bearer ...`. Writes each received payload to
-/tmp/tokusage-mock/<timestamp>-<host_id>.json and prints a summary.
+/tmp/tokusage-mock/<timestamp>-events-<count>.json and prints a summary.
 """
 import http.server
 import json
@@ -33,22 +33,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_error(400, f"invalid JSON: {e}")
             return
 
-        host_id = payload.get("meta", {}).get("host_id", "unknown")
+        events = payload.get("events", [])
         ts = datetime.utcnow().strftime("%Y%m%dT%H%M%S%f")
-        name = f"{ts}-{host_id}.json"
+        name = f"{ts}-events-{len(events)}.json"
         path = os.path.join(OUT, name)
         with open(path, "w") as f:
             json.dump(payload, f, indent=2)
 
-        contrib = len(payload.get("contributions", []))
-        dr = payload.get("meta", {}).get("date_range", {})
         total_tokens = sum(
-            sum(c.get("tokens", {}).values()) for c in payload.get("contributions", [])
+            sum(event.get("tokens", {}).values()) for event in events
         )
-        total_cost = sum(c.get("cost_cents", 0.0) for c in payload.get("contributions", []))
+        total_cost = sum(event.get("cost_cents", 0.0) for event in events)
         print(
-            f"[{ts}] host={host_id} contributions={contrib} "
-            f"range={dr.get('start')}..{dr.get('end')} "
+            f"[{ts}] events={len(events)} client_version={payload.get('client_version')} "
+            f"submitted_at={payload.get('submitted_at')} "
             f"tokens={total_tokens} cost_cents={total_cost:.2f} saved={path}"
         )
 

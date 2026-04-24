@@ -36,16 +36,16 @@ enum Command {
         #[arg(long)]
         yes: bool,
     },
-    /// Configure company API endpoint and token
+    /// Configure your team's API endpoint and user token
     Login {
-        /// Company API base URL (e.g. https://tokusage.yourcorp.com)
+        /// Team API base URL (e.g. https://tokusage.yourteam.internal)
         #[arg(long)]
         api_url: Option<String>,
-        /// Company API token
+        /// User token issued by the backend
         #[arg(long)]
         token: Option<String>,
     },
-    /// Scan sources and submit aggregated usage to the configured API
+    /// Scan sources and submit raw usage events to the configured API
     Submit {
         /// Print the payload without actually submitting
         #[arg(long)]

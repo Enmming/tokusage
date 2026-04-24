@@ -1,21 +1,9 @@
-"""Pydantic schemas for /api/submit. Mirrors the CLI's SubmitPayload."""
+"""Pydantic schemas for raw event submit."""
 
 import datetime as dt
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
-
-
-class DateRange(BaseModel):
-    start: dt.date
-    end: dt.date
-
-
-class Meta(BaseModel):
-    generated_at: dt.datetime
-    client_version: str
-    host_id: str = Field(min_length=1, max_length=64)
-    date_range: DateRange
+from pydantic import BaseModel
 
 
 class TokenBreakdown(BaseModel):
@@ -26,23 +14,28 @@ class TokenBreakdown(BaseModel):
     reasoning: int = 0
 
 
-class Contribution(BaseModel):
-    date: dt.date
-    client: Literal["claude", "codex", "cursor"]
+class SubmitEvent(BaseModel):
+    source: Literal["claude", "codex", "cursor"]
+    event_key: str
+    event_ts: dt.datetime
+    session_key: str | None = None
+    seq: int | None = None
     model: str
     provider: str
     tokens: TokenBreakdown
     cost_cents: float = 0.0
-    message_count: int = 0
-    dedup_keys: list[str] = []
+    raw_payload: dict[str, Any]
 
 
 class SubmitPayload(BaseModel):
-    meta: Meta
-    contributions: list[Contribution]
+    client_version: str
+    submitted_at: dt.datetime
+    events: list[SubmitEvent]
 
 
 class SubmitResponse(BaseModel):
     ok: bool = True
-    submission_id: int
-    contributions_upserted: int
+    received: int
+    inserted: int
+    duplicates_ignored: int
+    conflicts_ignored: int

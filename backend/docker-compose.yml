@@ -21,7 +21,6 @@ services:
     container_name: tokusage-api
     environment:
       TOKUSAGE_DATABASE_URL: postgresql+asyncpg://tokusage:tokusage@postgres:5432/tokusage
-      TOKUSAGE_VALID_TOKENS: "devtoken,demotoken"
     depends_on:
       postgres:
         condition: service_healthy

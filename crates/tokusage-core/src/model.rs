@@ -1,5 +1,6 @@
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -43,42 +44,36 @@ impl TokenBreakdown {
 #[derive(Debug, Clone)]
 pub struct UnifiedMessage {
     pub client: Client,
+    pub event_key: String,
+    pub session_key: Option<String>,
+    pub seq: Option<u64>,
     pub model: String,
     pub provider: String,
     pub timestamp: DateTime<Utc>,
     pub tokens: TokenBreakdown,
     pub cost_cents: f64,
-    pub dedup_key: String,
+    pub raw_payload: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DateRange {
-    pub start: NaiveDate,
-    pub end: NaiveDate,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Meta {
-    pub generated_at: DateTime<Utc>,
-    pub client_version: String,
-    pub host_id: String,
-    pub date_range: DateRange,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Contribution {
-    pub date: NaiveDate,
-    pub client: Client,
+pub struct SubmitEvent {
+    pub source: Client,
+    pub event_key: String,
+    pub event_ts: DateTime<Utc>,
+    pub session_key: Option<String>,
+    pub seq: Option<u64>,
     pub model: String,
     pub provider: String,
     pub tokens: TokenBreakdown,
     pub cost_cents: f64,
-    pub message_count: u32,
-    pub dedup_keys: Vec<String>,
+    pub raw_payload: Value,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SubmitPayload {
-    pub meta: Meta,
-    pub contributions: Vec<Contribution>,
+pub struct SubmitRequest {
+    pub client_version: String,
+    pub submitted_at: DateTime<Utc>,
+    pub events: Vec<SubmitEvent>,
 }
+
+pub type SubmitPayload = SubmitRequest;

@@ -15,8 +15,7 @@ pub const LABEL: &str = "com.Enmming.tokusage";
 pub const INTERVAL_SECS: i64 = 1800;
 
 pub fn plist_path() -> Result<PathBuf> {
-    let dirs = directories::BaseDirs::new()
-        .context("could not determine user home directory")?;
+    let dirs = directories::BaseDirs::new().context("could not determine user home directory")?;
     Ok(dirs
         .home_dir()
         .join("Library/LaunchAgents")
@@ -55,9 +54,7 @@ pub fn write_plist(binary_path: &std::path::Path, log_path: &std::path::Path) ->
     let mut env = plist::Dictionary::new();
     env.insert(
         "PATH".to_string(),
-        Value::String(
-            "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin".to_string(),
-        ),
+        Value::String("/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin".to_string()),
     );
     dict.insert("EnvironmentVariables".to_string(), Value::Dictionary(env));
 

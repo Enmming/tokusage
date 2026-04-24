@@ -4,7 +4,8 @@ use crate::manifest;
 use crate::queue;
 use crate::SourceArg;
 use anyhow::{Context, Result};
-use tokusage_core::{aggregator, sources, SubmitPayload, UnifiedMessage};
+use chrono::{DateTime, Utc};
+use tokusage_core::{sources, SubmitEvent, SubmitPayload, UnifiedMessage};
 
 pub fn run(dry_run: bool, source: Option<SourceArg>) -> Result<()> {
     // Opportunistic log rotation every run (cheap stat call if file fits).
@@ -13,11 +14,7 @@ pub fn run(dry_run: bool, source: Option<SourceArg>) -> Result<()> {
     }
 
     let messages = collect(source)?;
-    let payload = aggregator::build_payload(
-        messages,
-        env!("CARGO_PKG_VERSION"),
-        &manifest::host_id(),
-    );
+    let payload = build_submit_request(messages, env!("CARGO_PKG_VERSION"), Utc::now());
 
     if dry_run {
         println!("{}", serde_json::to_string_pretty(&payload)?);
@@ -29,7 +26,7 @@ pub fn run(dry_run: bool, source: Option<SourceArg>) -> Result<()> {
     // Drain any queued payloads first (oldest first).
     drain_queue(&api_url, &api_token)?;
 
-    if payload.contributions.is_empty() {
+    if payload.events.is_empty() {
         tracing::info!("no usage data collected; nothing to submit");
         return Ok(());
     }
@@ -40,11 +37,34 @@ pub fn run(dry_run: bool, source: Option<SourceArg>) -> Result<()> {
         return Err(e);
     }
 
-    tracing::info!(
-        contributions = payload.contributions.len(),
-        "submit ok"
-    );
+    tracing::info!(events = payload.events.len(), "submit ok");
     Ok(())
+}
+
+fn build_submit_request(
+    messages: Vec<UnifiedMessage>,
+    client_version: &str,
+    submitted_at: DateTime<Utc>,
+) -> SubmitPayload {
+    SubmitPayload {
+        client_version: client_version.to_string(),
+        submitted_at,
+        events: messages
+            .into_iter()
+            .map(|message| SubmitEvent {
+                source: message.client,
+                event_key: message.event_key,
+                event_ts: message.timestamp,
+                session_key: message.session_key,
+                seq: message.seq,
+                model: message.model,
+                provider: message.provider,
+                tokens: message.tokens,
+                cost_cents: message.cost_cents,
+                raw_payload: message.raw_payload,
+            })
+            .collect(),
+    }
 }
 
 fn drain_queue(api_url: &str, api_token: &str) -> Result<()> {
@@ -68,7 +88,10 @@ fn drain_queue(api_url: &str, api_token: &str) -> Result<()> {
                 tracing::info!(?path, "re-submitted queued payload");
             }
             Err(e) => {
-                tracing::warn!(?path, "queued re-submit still failing; will retry later: {e}");
+                tracing::warn!(
+                    ?path,
+                    "queued re-submit still failing; will retry later: {e}"
+                );
                 // Stop draining; don't hammer a dead endpoint.
                 return Ok(());
             }
@@ -153,8 +176,8 @@ fn collect_claude() -> Result<Vec<UnifiedMessage>> {
 }
 
 fn collect_codex() -> Result<Vec<UnifiedMessage>> {
-    let root = sources::codex::default_root()
-        .context("could not resolve Codex sessions directory")?;
+    let root =
+        sources::codex::default_root().context("could not resolve Codex sessions directory")?;
     sources::codex::scan(&root)
 }
 
@@ -163,4 +186,56 @@ fn collect_cursor() -> Result<Vec<UnifiedMessage>> {
         .enable_all()
         .build()?;
     rt.block_on(sources::cursor::scan())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+    use tokusage_core::{Client, SubmitRequest, TokenBreakdown};
+
+    fn msg() -> UnifiedMessage {
+        UnifiedMessage {
+            client: Client::Claude,
+            event_key: "claude:req_A:msg_1".to_string(),
+            session_key: Some("claude:sha256:session".to_string()),
+            seq: Some(3),
+            model: "claude-opus-4-7".to_string(),
+            provider: "anthropic".to_string(),
+            timestamp: Utc.with_ymd_and_hms(2026, 4, 23, 10, 28, 41).unwrap(),
+            tokens: TokenBreakdown {
+                input: 6,
+                output: 197,
+                cache_read: 16757,
+                cache_write: 10792,
+                reasoning: 0,
+            },
+            cost_cents: 0.0,
+            raw_payload: serde_json::json!({
+                "request_id": "req_A",
+                "message_id": "msg_1"
+            }),
+        }
+    }
+
+    #[test]
+    fn builds_raw_event_submit_request() {
+        let submitted_at = Utc.with_ymd_and_hms(2026, 4, 23, 10, 30, 0).unwrap();
+        let payload: SubmitRequest = build_submit_request(vec![msg()], "0.2.0", submitted_at);
+
+        assert_eq!(payload.client_version, "0.2.0");
+        assert_eq!(payload.submitted_at, submitted_at);
+        assert_eq!(payload.events.len(), 1);
+
+        let event = &payload.events[0];
+        assert_eq!(event.source, Client::Claude);
+        assert_eq!(event.event_key, "claude:req_A:msg_1");
+        assert_eq!(
+            event.event_ts,
+            Utc.with_ymd_and_hms(2026, 4, 23, 10, 28, 41).unwrap()
+        );
+        assert_eq!(event.session_key.as_deref(), Some("claude:sha256:session"));
+        assert_eq!(event.seq, Some(3));
+        assert_eq!(event.raw_payload["request_id"], "req_A");
+    }
 }

@@ -19,8 +19,7 @@ pub const TIMER: &str = "tokusage.timer";
 pub const INTERVAL: &str = "2h";
 
 fn units_dir() -> Result<PathBuf> {
-    let dirs = directories::BaseDirs::new()
-        .context("could not determine user home directory")?;
+    let dirs = directories::BaseDirs::new().context("could not determine user home directory")?;
     Ok(dirs.config_dir().join("systemd/user"))
 }
 
