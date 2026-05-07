@@ -9,6 +9,7 @@
 #   TOKUSAGE_VERSION   : pin to a specific tag like "v0.2.0" (default: latest)
 #   TOKUSAGE_REPO      : override "Enmming/tokusage"
 #   TOKUSAGE_BIN_DIR   : override "$HOME/.local/bin"
+#   TOKUSAGE_SKIP_CHECKSUM=1 : skip sha256 verification (not recommended)
 
 set -euo pipefail
 
@@ -65,7 +66,11 @@ if curl -fsSL "$SHA_URL" -o "$TMP/${TARBALL}.sha256" 2>/dev/null; then
   fi
   [ "$EXPECTED" = "$ACTUAL" ] || err "sha256 mismatch: expected $EXPECTED got $ACTUAL"
 else
-  printf '\033[1;33mwarn:\033[0m no sha256 sidecar available; skipping checksum\n'
+  if [ "${TOKUSAGE_SKIP_CHECKSUM:-}" = "1" ]; then
+    printf '\033[1;33mwarn:\033[0m no sha256 sidecar available; skipping checksum\n'
+  else
+    err "no sha256 sidecar available; set TOKUSAGE_SKIP_CHECKSUM=1 to skip verification"
+  fi
 fi
 
 log "unpacking..."

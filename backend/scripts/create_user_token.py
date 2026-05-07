@@ -18,7 +18,9 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from app import models as _models  # noqa: F401
 from app.config import settings
+from app.db import Base
 
 
 def generate_token() -> str:
@@ -55,6 +57,7 @@ async def _run() -> int:
     engine = create_async_engine(resolve_database_url())
     try:
         async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
             await conn.execute(
                 text(
                     """

@@ -11,7 +11,7 @@ pub fn run(api_url: Option<String>, token: Option<String>) -> Result<()> {
     };
     let token = match token {
         Some(t) => t,
-        None => prompt("Company API token: ")?,
+        None => prompt_secret("Company API token: ")?,
     };
 
     cfg.api_url = Some(api_url.trim().to_string());
@@ -30,6 +30,10 @@ fn prompt(label: &str) -> Result<String> {
         .read_line(&mut buf)
         .context("reading from stdin")?;
     Ok(buf.trim().to_string())
+}
+
+fn prompt_secret(label: &str) -> Result<String> {
+    rpassword::prompt_password(label).context("reading secret from terminal")
 }
 
 /// Return a validated (api_url, api_token) pair from config, or an actionable

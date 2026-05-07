@@ -1,6 +1,6 @@
 //! Windows Task Scheduler integration via `schtasks.exe`.
 //!
-//! Creates a user-level task that runs `tokusage submit` every 2 hours.
+//! Creates a user-level task that runs `tokusage submit` every 30 minutes.
 //! We shell out to the built-in `schtasks` rather than using the COM Task
 //! Scheduler API because it avoids pulling in the `windows` crate and any
 //! platform-specific build steps — every Windows box has schtasks.
@@ -9,20 +9,20 @@ use anyhow::{Context, Result};
 use std::process::Command;
 
 pub const TASK_NAME: &str = "Tokusage";
-/// Every 2 hours, in Task Scheduler's XML-friendly notation.
-pub const INTERVAL_HOURS: u32 = 2;
+/// Every 30 minutes, in Task Scheduler's CLI notation.
+pub const INTERVAL_MINUTES: u32 = 30;
 
 pub fn create_task(binary_path: &std::path::Path) -> Result<()> {
     // /F = force overwrite; /RL LIMITED = user-level, no elevation.
-    // /SC HOURLY /MO 2 = every 2 hours.
+    // /SC MINUTE /MO 30 = every 30 minutes.
     let status = Command::new("schtasks.exe")
         .args([
             "/Create",
             "/F",
             "/SC",
-            "HOURLY",
+            "MINUTE",
             "/MO",
-            &INTERVAL_HOURS.to_string(),
+            &INTERVAL_MINUTES.to_string(),
             "/RL",
             "LIMITED",
             "/TN",

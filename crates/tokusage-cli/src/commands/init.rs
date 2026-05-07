@@ -1,4 +1,4 @@
-use crate::{claude_hook, manifest};
+use crate::{claude_hook, config, manifest};
 use anyhow::{Context, Result};
 use std::io::{self, Write};
 
@@ -9,6 +9,11 @@ pub fn run(_yes: bool) -> Result<()> {
 
 #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
 pub fn run(yes: bool) -> Result<()> {
+    let cfg = config::load().unwrap_or_default();
+    if cfg.api_url.is_none() || cfg.api_token.is_none() {
+        anyhow::bail!("run 'tokusage login' before 'tokusage init' so the scheduler can submit successfully at load time");
+    }
+
     let binary = std::env::current_exe().context("could not determine tokusage binary path")?;
     let log = manifest::log_path()?;
 
@@ -50,7 +55,7 @@ pub fn run(yes: bool) -> Result<()> {
     })?;
 
     println!("done.");
-    println!("  run 'tokusage login' next, then 'tokusage submit' to send your first payload.");
+    println!("  run 'tokusage submit' to send your first payload.");
     Ok(())
 }
 

@@ -2,7 +2,7 @@
 //!
 //! `install()` writes two files under `~/.config/systemd/user/`:
 //! - `tokusage.service` — one-shot unit that runs `tokusage submit`
-//! - `tokusage.timer`   — activates the service every 2h, with
+//! - `tokusage.timer`   — activates the service every 30min, with
 //!   `Persistent=true` so misses (sleep, power-off) are caught up on boot
 //!
 //! Then `systemctl --user daemon-reload && systemctl --user enable --now tokusage.timer`.
@@ -15,8 +15,8 @@ use std::process::Command;
 
 pub const SERVICE: &str = "tokusage.service";
 pub const TIMER: &str = "tokusage.timer";
-/// Every 2 hours.
-pub const INTERVAL: &str = "2h";
+/// Every 30 minutes.
+pub const INTERVAL: &str = "30min";
 
 fn units_dir() -> Result<PathBuf> {
     let dirs = directories::BaseDirs::new().context("could not determine user home directory")?;

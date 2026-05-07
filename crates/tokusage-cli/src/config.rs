@@ -34,6 +34,11 @@ pub fn load() -> Result<Config> {
 pub fn save(cfg: &Config) -> Result<()> {
     let dir = config_dir()?;
     fs::create_dir_all(&dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))?;
+    }
     let path = config_path()?;
     let text = toml::to_string_pretty(cfg)?;
     fs::write(&path, text)?;

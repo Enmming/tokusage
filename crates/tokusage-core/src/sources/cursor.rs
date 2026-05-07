@@ -48,8 +48,27 @@ fn use_proxy() -> bool {
 
 pub fn default_db_path() -> Option<PathBuf> {
     directories::BaseDirs::new().map(|d| {
-        d.home_dir()
-            .join("Library/Application Support/Cursor/User/globalStorage/state.vscdb")
+        #[cfg(target_os = "macos")]
+        {
+            d.home_dir()
+                .join("Library/Application Support/Cursor/User/globalStorage/state.vscdb")
+        }
+        #[cfg(target_os = "linux")]
+        {
+            d.config_dir().join("Cursor/User/globalStorage/state.vscdb")
+        }
+        #[cfg(target_os = "windows")]
+        {
+            d.config_dir()
+                .join("Cursor")
+                .join("User")
+                .join("globalStorage")
+                .join("state.vscdb")
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+        {
+            d.home_dir().join(".cursor/User/globalStorage/state.vscdb")
+        }
     })
 }
 
@@ -72,11 +91,9 @@ fn read_token(db_path: &Path, key: &str, label: &str) -> anyhow::Result<String> 
     let conn =
         rusqlite::Connection::open_with_flags(db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
     let jwt: String = conn
-        .query_row(
-            "SELECT value FROM ItemTable WHERE key=?1",
-            [key],
-            |row| row.get(0),
-        )
+        .query_row("SELECT value FROM ItemTable WHERE key=?1", [key], |row| {
+            row.get(0)
+        })
         .map_err(|e| {
             anyhow::anyhow!(
                 "could not read {key} from {}: {e}. Try signing into Cursor IDE again.",
@@ -604,7 +621,10 @@ mod tests {
         refresh.assert_async().await;
         usage.assert_async().await;
         assert_eq!(msgs.len(), 1);
-        assert_eq!(msgs[0].event_key, "cursor:1776348340274:234376495:gpt-5.4-medium:USAGE_EVENT_KIND_INCLUDED_IN_PRO:ui");
+        assert_eq!(
+            msgs[0].event_key,
+            "cursor:1776348340274:234376495:gpt-5.4-medium:USAGE_EVENT_KIND_INCLUDED_IN_PRO:ui"
+        );
     }
 
     fn make_page(count: usize, start_ts: u64) -> String {

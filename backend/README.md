@@ -1,7 +1,8 @@
 # tokusage backend
 
 Minimum API that receives `POST /api/submit` from the CLI and stores raw
-usage events. Reporting is handled out-of-band by a summary script that
+usage events. Per-user reporting is available through `GET /api/summary`;
+team-wide/operator reporting is available through a summary script that
 recomputes totals from `raw_usage_events`.
 
 ## Endpoints
@@ -10,6 +11,7 @@ recomputes totals from `raw_usage_events`.
 |---|---|---|---|
 | `GET` | `/health` | none | liveness probe |
 | `POST` | `/api/submit` | Bearer | accept CLI payload, store raw events, ignore duplicates, audit conflicts |
+| `GET` | `/api/summary` | Bearer | return daily usage summary rows for the authenticated user |
 
 Request body shape:
 
@@ -58,6 +60,13 @@ Three tables (see `app/models.py`):
 excluded from duplicate/conflict hashing so the same logical event can be
 mirrored across multiple source files without producing false conflicts.
 
+Submit requests are bounded before storage:
+
+- maximum request body: 8 MiB by default (`TOKUSAGE_MAX_REQUEST_BYTES`)
+- maximum `events`: 1000 per submit
+- token counts, sequence numbers, and costs must be non-negative
+- each event `raw_payload` is capped at 64 KiB
+
 Current source semantics:
 
 - `Claude` emits one final event per logical assistant response. The raw unique id is the transcript row `uuid`, while `request_id + message_id` is only the in-file streaming group used to pick the final snapshot.
@@ -65,7 +74,8 @@ Current source semantics:
 - `Cursor` emits one event per dashboard usage row. The stored `event_key` is `timestamp + owning_user + model + kind + ui/headless`, which is the best identity available in Cursor's current payload shape.
 
 `POST /api/submit` does not aggregate and does not maintain a precomputed
-summary table.
+summary table. `GET /api/summary` computes rows from `raw_usage_events` on
+demand for the authenticated user.
 
 ## Local dev
 
@@ -89,7 +99,11 @@ curl -X POST http://127.0.0.1:8080/api/submit \
   -H "Content-Type: application/json" \
   -d '{"client_version":"0.2.0","submitted_at":"2026-04-23T10:30:00Z","events":[...]}'
 
-# Recompute summaries on demand
+# Read the authenticated user's summary
+curl "http://127.0.0.1:8080/api/summary?from=2026-04-01&to=2026-04-30" \
+  -H "Authorization: Bearer <plain-token-from-create_user_token>"
+
+# Recompute team-wide summaries on demand
 .venv/bin/python scripts/usage_summary.py --from 2026-04-01 --to 2026-04-30
 ```
 
@@ -111,7 +125,7 @@ uv pip install -e . --group dev
 pytest
 ```
 
-In-memory SQLite. No docker / Postgres needed for CI.
+SQLite. No docker / Postgres needed for CI.
 
 ## Auth
 

@@ -11,20 +11,27 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub fn data_dir() -> Result<PathBuf> {
+    if let Ok(dir) = std::env::var("TOKUSAGE_DATA_DIR") {
+        return Ok(PathBuf::from(dir));
+    }
     let dirs = directories::BaseDirs::new().context("could not determine user home directory")?;
     Ok(dirs.home_dir().join(".local/share/tokusage"))
 }
 
 pub fn queue_dir() -> Result<PathBuf> {
-    let p = data_dir()?.join("queue");
-    fs::create_dir_all(&p)?;
+    let base = data_dir()?;
+    create_private_dir_all(&base)?;
+    let p = base.join("queue");
+    create_private_dir_all(&p)?;
     Ok(p)
 }
 
 #[allow(dead_code)]
 pub fn log_dir() -> Result<PathBuf> {
-    let p = data_dir()?.join("logs");
-    fs::create_dir_all(&p)?;
+    let base = data_dir()?;
+    create_private_dir_all(&base)?;
+    let p = base.join("logs");
+    create_private_dir_all(&p)?;
     Ok(p)
 }
 
@@ -50,9 +57,20 @@ pub struct InstallManifest {
 
 pub fn save(manifest: &InstallManifest) -> Result<()> {
     let path = manifest_path()?;
-    fs::create_dir_all(path.parent().unwrap())?;
+    create_private_dir_all(&data_dir()?)?;
+    create_private_dir_all(path.parent().unwrap())?;
     let text = serde_json::to_string_pretty(manifest)?;
     fs::write(&path, text)?;
+    Ok(())
+}
+
+pub fn create_private_dir_all(path: &Path) -> Result<()> {
+    fs::create_dir_all(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    }
     Ok(())
 }
 

@@ -9,7 +9,8 @@
 
 use crate::manifest::queue_dir;
 use anyhow::{Context, Result};
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::PathBuf;
 use tokusage_core::SubmitPayload;
 
@@ -22,8 +23,22 @@ pub fn enqueue(payload: &SubmitPayload) -> Result<PathBuf> {
     );
     let path = dir.join(name);
     let text = serde_json::to_string(payload)?;
-    fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
+    write_private_file(&path, text.as_bytes())
+        .with_context(|| format!("writing {}", path.display()))?;
     Ok(path)
+}
+
+fn write_private_file(path: &std::path::Path, bytes: &[u8]) -> Result<()> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(bytes)?;
+    Ok(())
 }
 
 /// List queued files oldest first.
@@ -56,4 +71,55 @@ pub fn quarantine(path: &std::path::Path) -> Result<()> {
     let name = path.file_name().context("queue file has no name")?;
     fs::rename(path, poison.join(name))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{TimeZone, Utc};
+    use tokusage_core::{Client, SubmitEvent, SubmitPayload, TokenBreakdown};
+
+    fn payload() -> SubmitPayload {
+        SubmitPayload {
+            client_version: "0.2.0".to_string(),
+            submitted_at: Utc.with_ymd_and_hms(2026, 4, 23, 10, 30, 0).unwrap(),
+            events: vec![SubmitEvent {
+                source: Client::Claude,
+                event_key: "claude:uuid-1".to_string(),
+                event_ts: Utc.with_ymd_and_hms(2026, 4, 23, 10, 28, 0).unwrap(),
+                session_key: None,
+                seq: None,
+                model: "claude-opus-4-7".to_string(),
+                provider: "anthropic".to_string(),
+                tokens: TokenBreakdown::default(),
+                cost_cents: 0.0,
+                raw_payload: serde_json::json!({}),
+            }],
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn enqueue_uses_private_permissions_for_queue_dir_and_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let previous_data_dir = std::env::var_os("TOKUSAGE_DATA_DIR");
+        std::env::set_var("TOKUSAGE_DATA_DIR", tmp.path());
+
+        let path = enqueue(&payload()).unwrap();
+        let queue_dir = path.parent().unwrap();
+
+        let dir_mode = std::fs::metadata(queue_dir).unwrap().permissions().mode() & 0o777;
+        let file_mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+
+        if let Some(data_dir) = previous_data_dir {
+            std::env::set_var("TOKUSAGE_DATA_DIR", data_dir);
+        } else {
+            std::env::remove_var("TOKUSAGE_DATA_DIR");
+        }
+
+        assert_eq!(dir_mode, 0o700);
+        assert_eq!(file_mode, 0o600);
+    }
 }

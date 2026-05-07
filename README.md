@@ -4,8 +4,8 @@ Scan your local AI coding tool session files, merge them with the live Cursor
 dashboard API, and POST raw usage events to your team's internal endpoint
 on a schedule. Sources: **Claude Code**, **Codex CLI**, **Cursor IDE**.
 
-No cookies to copy, no dashboards to open — once a day you run `tokusage init`
-and the rest is automatic.
+No cookies to copy, no dashboards to open — run `tokusage login` once, then
+`tokusage init`, and the rest is automatic.
 
 ## What it does
 
@@ -30,13 +30,14 @@ Downloads the right platform binary, verifies sha256, installs to
 `~/.local/bin/tokusage`, strips macOS Gatekeeper quarantine.
 
 Pin a version with `TOKUSAGE_VERSION=v0.2.0`; override the install directory
-with `TOKUSAGE_BIN_DIR=...`.
+with `TOKUSAGE_BIN_DIR=...`. The installer requires the release `.sha256`
+sidecar unless `TOKUSAGE_SKIP_CHECKSUM=1` is explicitly set.
 
 ## First-time setup
 
 ```bash
 tokusage login   # enter your team's API URL and user token (saved to ~/.config/tokusage/config.toml)
-tokusage init    # install launchd scheduler; optionally inject Claude Code Stop hook
+tokusage init    # install the scheduler; optionally inject Claude Code Stop hook
 tokusage submit  # send the first payload immediately
 ```
 
@@ -54,8 +55,8 @@ tokusage self-update  # fetch latest release and re-install
 tokusage self-uninstall
 ```
 
-Removes the launchd agent, Claude Code hook (if installed), config, data
-directory, and queue. The binary itself is left for you to remove.
+Removes the scheduler, Claude Code hook (if installed), config, data directory,
+and queue. The binary itself is left for you to remove.
 
 ## Paths
 
@@ -64,8 +65,10 @@ directory, and queue. The binary itself is left for you to remove.
 | Binary | `~/.local/bin/tokusage` |
 | Config | `~/.config/tokusage/config.toml` |
 | Data (manifest, queue, logs) | `~/.local/share/tokusage/` |
-| launchd plist | `~/Library/LaunchAgents/com.gd.tokusage.plist` |
-| Run log (launchd stdout/stderr) | `~/.local/share/tokusage/logs/submit.log` |
+| macOS launchd plist | `~/Library/LaunchAgents/com.Enmming.tokusage.plist` |
+| Linux systemd timer | `~/.config/systemd/user/tokusage.timer` |
+| Windows Task Scheduler task | `Tokusage` |
+| Run log (scheduler stdout/stderr) | `~/.local/share/tokusage/logs/submit.log` |
 
 ## Data sent
 
@@ -108,6 +111,21 @@ Cursor connectivity notes:
 
 - tokusage bypasses system proxies for Cursor by default because `reqwest + rustls` frequently fails on proxy TLS handshakes while direct access to `api2.cursor.sh` still works.
 - If your network really requires a proxy for Cursor, set `TOKUSAGE_CURSOR_USE_PROXY=1`.
+- Cursor state DB paths are detected per platform: macOS
+  `~/Library/Application Support/Cursor/...`, Linux `~/.config/Cursor/...`,
+  and Windows `%APPDATA%\Cursor\...`.
+
+## Reporting
+
+The backend exposes `GET /api/summary` for the authenticated user's own usage:
+
+```bash
+curl https://tokusage.yourteam.internal/api/summary?from=2026-04-01\&to=2026-04-30 \
+  -H "Authorization: Bearer <user-token>"
+```
+
+Backend operators can also run `backend/scripts/usage_summary.py` for team-wide
+CSV, JSON, or table exports.
 
 ## Dev
 

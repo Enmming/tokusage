@@ -1,5 +1,6 @@
 """End-to-end tests for DB-backed token auth and raw event ingest."""
 
+import asyncio
 import hashlib
 import os
 
@@ -80,8 +81,9 @@ def payload(
 
 
 @pytest.fixture
-async def client():
-    db.engine = create_async_engine(os.environ["TOKUSAGE_DATABASE_URL"])
+async def client(tmp_path):
+    db_url = f"sqlite+aiosqlite:///{tmp_path / 'tokusage-test.sqlite3'}"
+    db.engine = create_async_engine(db_url)
     db.SessionLocal = async_sessionmaker(db.engine, expire_on_commit=False)
     async with db.engine.begin() as conn:
         await conn.run_sync(db.Base.metadata.create_all)
@@ -113,6 +115,68 @@ async def test_rejects_submit_when_events_field_is_missing(client):
     )
 
     assert response.status_code == 422
+
+
+async def test_rejects_negative_token_counts(client):
+    await _create_user_token()
+    bad_payload = payload(input_tokens=-1)
+
+    response = await client.post(
+        "/api/submit",
+        headers=_headers(),
+        json=bad_payload,
+    )
+
+    assert response.status_code == 422
+
+
+async def test_rejects_too_many_events(client):
+    await _create_user_token()
+    one_event = payload()["events"][0]
+    bad_payload = {
+        "client_version": "0.2.0",
+        "submitted_at": "2026-04-23T10:30:00Z",
+        "events": [
+            {
+                **one_event,
+                "event_key": f"claude:too-many:{i}",
+            }
+            for i in range(1001)
+        ],
+    }
+
+    response = await client.post(
+        "/api/submit",
+        headers=_headers(),
+        json=bad_payload,
+    )
+
+    assert response.status_code == 422
+
+
+async def test_rejects_oversized_raw_payload(client):
+    await _create_user_token()
+    bad_payload = payload(raw_payload={"blob": "x" * 70000})
+
+    response = await client.post(
+        "/api/submit",
+        headers=_headers(),
+        json=bad_payload,
+    )
+
+    assert response.status_code == 422
+
+
+async def test_rejects_oversized_request_body_before_parsing(client):
+    await _create_user_token()
+
+    response = await client.post(
+        "/api/submit",
+        headers={**_headers(), "Content-Type": "application/json"},
+        content=b"x" * (8 * 1024 * 1024 + 1),
+    )
+
+    assert response.status_code == 413
 
 
 async def test_accepts_valid_db_token_and_inserts_raw_event(client):
@@ -149,6 +213,34 @@ async def test_accepts_valid_db_token_and_inserts_raw_event(client):
     assert row.client_version == "0.2.0"
     assert row.raw_payload_json == {"request_id": "req_abc", "message_id": "msg_xyz"}
     assert row.content_hash
+
+
+async def test_concurrent_duplicate_submits_are_idempotent(client):
+    await _create_user_token()
+
+    responses = await asyncio.gather(
+        *[
+            client.post(
+                "/api/submit",
+                headers=_headers(),
+                json=payload(),
+            )
+            for _ in range(8)
+        ]
+    )
+
+    assert all(response.status_code == 200 for response in responses), [
+        response.text for response in responses
+    ]
+    totals = {
+        key: sum(response.json()[key] for response in responses)
+        for key in ("inserted", "duplicates_ignored", "conflicts_ignored")
+    }
+    assert totals == {
+        "inserted": 1,
+        "duplicates_ignored": 7,
+        "conflicts_ignored": 0,
+    }
 
 
 async def test_ignores_duplicate_event_with_same_content(client):
@@ -263,9 +355,36 @@ async def test_ignores_duplicate_when_only_session_metadata_differs(client):
     assert len(conflict_rows) == 0
 
 
-async def test_summary_endpoint_is_removed(client):
+async def test_summary_endpoint_returns_authenticated_user_rows(client):
+    await _create_user_token()
+    submit_response = await client.post(
+        "/api/submit",
+        headers=_headers(),
+        json=payload(),
+    )
+    assert submit_response.status_code == 200, submit_response.text
+
     response = await client.get(
         "/api/summary",
-        headers={"Authorization": "Bearer envtoken"},
+        headers=_headers(),
+        params={"from": "2026-04-23", "to": "2026-04-23"},
     )
-    assert response.status_code == 404
+
+    assert response.status_code == 200, response.text
+    assert response.json() == [
+        {
+            "team_id": "team-1",
+            "user_label": "alice",
+            "usage_date": "2026-04-23",
+            "source": "claude",
+            "model": "claude-opus-4-7",
+            "provider": "anthropic",
+            "event_count": 1,
+            "input_tokens": 6,
+            "output_tokens": 197,
+            "cache_read_tokens": 16757,
+            "cache_write_tokens": 10792,
+            "reasoning_tokens": 0,
+            "cost_cents": 0.1,
+        }
+    ]
