@@ -73,7 +73,7 @@ pub fn quarantine(path: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
     use chrono::{TimeZone, Utc};
@@ -98,7 +98,6 @@ mod tests {
         }
     }
 
-    #[cfg(unix)]
     #[test]
     fn enqueue_uses_private_permissions_for_queue_dir_and_file() {
         use std::os::unix::fs::PermissionsExt;
