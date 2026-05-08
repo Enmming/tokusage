@@ -18,8 +18,12 @@ pub fn settings_path() -> Result<PathBuf> {
 
 pub fn inject(binary_path: &Path) -> Result<bool> {
     let path = settings_path()?;
+    inject_at(&path, binary_path)
+}
+
+fn inject_at(path: &Path, binary_path: &Path) -> Result<bool> {
     let mut settings: Value = if path.exists() {
-        let text = fs::read_to_string(&path)?;
+        let text = fs::read_to_string(path)?;
         serde_json::from_str(&text)
             .with_context(|| format!("parsing existing {}", path.display()))?
     } else {
@@ -65,7 +69,7 @@ pub fn inject(binary_path: &Path) -> Result<bool> {
 
     fs::create_dir_all(path.parent().unwrap())?;
     let text = serde_json::to_string_pretty(&settings)?;
-    fs::write(&path, text)?;
+    fs::write(path, text)?;
     Ok(true)
 }
 
@@ -73,11 +77,15 @@ pub fn inject(binary_path: &Path) -> Result<bool> {
 /// true if something was removed.
 pub fn remove() -> Result<bool> {
     let path = settings_path()?;
+    remove_at(&path)
+}
+
+fn remove_at(path: &Path) -> Result<bool> {
     if !path.exists() {
         return Ok(false);
     }
 
-    let text = fs::read_to_string(&path)?;
+    let text = fs::read_to_string(path)?;
     let mut settings: Value =
         serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
 
@@ -103,7 +111,7 @@ pub fn remove() -> Result<bool> {
     // Write back if anything changed.
     if removed {
         let text = serde_json::to_string_pretty(&settings)?;
-        fs::write(&path, text)?;
+        fs::write(path, text)?;
     }
     Ok(removed)
 }
@@ -121,29 +129,21 @@ mod tests {
 
     #[test]
     fn inject_removes_then_reinjects_idempotently() {
-        // This is a unit-ish test: we bypass settings_path() by temporarily
-        // changing HOME so the real settings file isn't touched.
         let tmp = tempfile::TempDir::new().unwrap();
-        let home = tmp.path();
-        std::fs::create_dir_all(home.join(".claude")).unwrap();
-        std::env::set_var("HOME", home);
-        #[cfg(target_os = "macos")]
-        std::env::set_var("XDG_CONFIG_HOME", home.join(".config"));
+        let settings = tmp.path().join(".claude/settings.json");
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
 
         // Pre-existing hook belongs to the user; must survive.
         std::fs::write(
-            home.join(".claude/settings.json"),
+            &settings,
             r#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo user-hook"}]}]}}"#,
         )
         .unwrap();
 
-        let bin = home.join("bin/tokusage");
-        inject(&bin).unwrap();
+        let bin = tmp.path().join("bin/tokusage");
+        inject_at(&settings, &bin).unwrap();
 
-        let v: Value = serde_json::from_str(
-            &std::fs::read_to_string(home.join(".claude/settings.json")).unwrap(),
-        )
-        .unwrap();
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
         let groups = v["hooks"]["Stop"].as_array().unwrap();
         assert_eq!(groups.len(), 2, "user group + tokusage group");
         assert!(groups.iter().any(|g| g[SENTINEL].as_bool() == Some(true)));
@@ -152,20 +152,14 @@ mod tests {
             .any(|g| g["hooks"][0]["command"].as_str() == Some("echo user-hook")));
 
         // Re-inject should not duplicate.
-        inject(&bin).unwrap();
-        let v: Value = serde_json::from_str(
-            &std::fs::read_to_string(home.join(".claude/settings.json")).unwrap(),
-        )
-        .unwrap();
+        inject_at(&settings, &bin).unwrap();
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
         assert_eq!(v["hooks"]["Stop"].as_array().unwrap().len(), 2);
 
         // Remove should only take tokusage group.
-        let removed = remove().unwrap();
+        let removed = remove_at(&settings).unwrap();
         assert!(removed);
-        let v: Value = serde_json::from_str(
-            &std::fs::read_to_string(home.join(".claude/settings.json")).unwrap(),
-        )
-        .unwrap();
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
         let groups = v["hooks"]["Stop"].as_array().unwrap();
         assert_eq!(groups.len(), 1);
         assert_eq!(
