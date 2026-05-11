@@ -107,6 +107,58 @@ curl "http://127.0.0.1:8080/api/summary?from=2026-04-01&to=2026-04-30" \
 .venv/bin/python scripts/usage_summary.py --from 2026-04-01 --to 2026-04-30
 ```
 
+## Production deploy
+
+Backend images are published by GitHub Actions to GHCR:
+
+```text
+ghcr.io/enmming/tokusage-backend:latest
+ghcr.io/enmming/tokusage-backend:v0.2.0
+```
+
+On the server, copy the production compose file and create an environment file:
+
+```bash
+cd backend
+cp .env.prod.example .env
+$EDITOR .env
+```
+
+Set at least a strong `POSTGRES_PASSWORD`. Pin
+`TOKUSAGE_BACKEND_IMAGE` to a release tag for predictable production deploys:
+
+```env
+TOKUSAGE_BACKEND_IMAGE=ghcr.io/enmming/tokusage-backend:v0.2.0
+```
+
+If the GHCR package is private, log in on the server before pulling:
+
+```bash
+echo "<github-token>" | docker login ghcr.io -u <github-user> --password-stdin
+```
+
+Start or update the service:
+
+```bash
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+curl http://127.0.0.1:8080/health
+```
+
+Create a user token:
+
+```bash
+docker compose -f docker-compose.prod.yml exec api \
+  python scripts/create_user_token.py --team team-a --user alice
+```
+
+Expose the API through HTTPS with your reverse proxy and point clients at that
+base URL:
+
+```bash
+tokusage login --api-url https://tokusage.yourteam.internal --token <user-token>
+```
+
 ## Bare metal (no docker)
 
 ```bash

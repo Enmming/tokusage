@@ -127,6 +127,29 @@ curl https://tokusage.yourteam.internal/api/summary?from=2026-04-01\&to=2026-04-
 Backend operators can also run `backend/scripts/usage_summary.py` for team-wide
 CSV, JSON, or table exports.
 
+## Backend deployment
+
+The backend is a FastAPI service with a Postgres database. GitHub Actions
+publishes the service image to GHCR as:
+
+```text
+ghcr.io/enmming/tokusage-backend:latest
+ghcr.io/enmming/tokusage-backend:<release-tag>
+```
+
+Use `backend/docker-compose.prod.yml` on the server:
+
+```bash
+cd backend
+cp .env.prod.example .env
+$EDITOR .env
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+curl http://127.0.0.1:8080/health
+```
+
+See `backend/README.md` for token creation and reverse proxy notes.
+
 ## Dev
 
 ```bash

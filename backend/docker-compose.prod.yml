@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tokusage}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-tokusage}
+    volumes:
+      - tokusage_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tokusage}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    image: ${TOKUSAGE_BACKEND_IMAGE:-ghcr.io/enmming/tokusage-backend:latest}
+    restart: unless-stopped
+    environment:
+      TOKUSAGE_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-tokusage}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-tokusage}
+      TOKUSAGE_MAX_REQUEST_BYTES: ${TOKUSAGE_MAX_REQUEST_BYTES:-8388608}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${TOKUSAGE_API_PORT:-8080}:8080"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).read()\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  tokusage_pgdata:

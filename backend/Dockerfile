@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml ./
 COPY app app
+COPY scripts scripts
 
 RUN uv pip install --system --no-cache .
 
