@@ -38,9 +38,12 @@ esac
 # Resolve version to a concrete tag so we can build the filename.
 if [ "$VERSION" = "latest" ]; then
   log "resolving latest release tag..."
-  VERSION="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-    | grep -m1 '"tag_name"' \
-    | sed -E 's/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/')"
+  # Buffer the API response first so the parse step can't SIGPIPE curl.
+  # `curl | grep -m1 | sed` under `set -o pipefail` was killing the script
+  # silently because grep -m1 closes the pipe and curl exits non-zero.
+  API_JSON="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest")"
+  VERSION="$(printf '%s\n' "$API_JSON" \
+    | sed -nE 's/.*"tag_name":[[:space:]]*"([^"]+)".*/\1/p')"
   [ -n "$VERSION" ] || err "could not determine latest version from GitHub API"
 fi
 
