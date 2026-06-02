@@ -66,6 +66,20 @@ tokusage --version
 > Want to check the download's integrity? Each `.zip` ships a matching
 > `.zip.sha256` asset containing its SHA-256 hash.
 
+**Running commands:** `tokusage` is a command-line tool — run it from a terminal
+(PowerShell or Windows Terminal), **not** by double-clicking the `.exe` (that
+just flashes a window and closes). If you added the folder to PATH (step 5),
+type the command directly; otherwise `cd` into the folder first and prefix it
+with `.\`:
+
+```text
+tokusage show           # if the folder is on your PATH
+.\tokusage.exe show     # run from inside the folder, if it isn't
+```
+
+(The `.exe` is optional when typing — `tokusage show` and `tokusage.exe show`
+are equivalent.)
+
 Windows notes for the rest of the flow:
 
 - `tokusage init` registers a **Task Scheduler** task named `Tokusage` (runs
