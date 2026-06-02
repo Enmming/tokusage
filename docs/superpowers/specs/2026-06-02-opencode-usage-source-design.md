@@ -62,8 +62,10 @@ id**.
 | `id`                  | `event_key = "opencode:{id}"` |
 | `sessionID`           | `session_key = "opencode:{sessionID}"` |
 
-A message is **skipped** when all five token fields are zero, or when `modelID`
-or `providerID` is missing/empty. `seq` is `None`.
+A message is **skipped** when all five token fields are zero, when `modelID` or
+`providerID` is missing/empty, or when `time.created` is absent/unparseable
+(parsed via `Utc.timestamp_millis_opt(ms).single()`, mirroring `cursor.rs`'s
+early-return). `seq` is `None`.
 
 ## Components
 
@@ -88,12 +90,16 @@ Mirrors `codex.rs`. Public API:
      file; unreadable/unparseable files → `warn!` + skip.
 
 - Private `message_value_to_unified(value, id, session_id) -> Option<UnifiedMessage>`
-  shared by both tiers, applying the mapping table above. `id` comes from the DB
-  row, else JSON `id`, else the file stem; `session_id` from the DB row, else
-  JSON `sessionID`. `raw_payload` carries `{ session_id, message_id, provider,
-  tier: "db"|"json" }`.
+  shared by both tiers, applying the mapping table above. The message id used for
+  `event_key`/dedup is the in-file `id` field, which equals the DB `id` exactly,
+  so the same message in both tiers collides. The JSON tier falls back to the
+  file stem only when the in-file `id` is absent — the stem keeps the `msg_`
+  prefix so it still lines up with the DB `id`. `session_id` comes from the DB
+  row, else JSON `sessionID`. `raw_payload` carries `{ session_id, message_id,
+  provider, tier: "db"|"json" }`.
 
-Dedup: a `HashSet<String>` of seen `event_key`s; the DB tier is read first, then
+Dedup: a `HashSet<String>` of seen `event_key`s. The **DB tier is read first**
+(it is the newer, migrated copy, so on a JSON/DB collision the DB row wins), then
 JSON, skipping already-seen ids.
 
 ### 3. `tokusage-core/src/sources/mod.rs`
@@ -105,9 +111,9 @@ Add `collect_opencode()` and wire it into both the
 source failure is logged via `tracing::warn!` and skipped, like the others.
 
 ### 5. `tokusage-cli/src/main.rs`
-Add `OpenCode` to `SourceArg`. Update the `--source` help text
-(`claude|codex|cursor|opencode`) and the top-level `about` string to mention
-opencode.
+Add `OpenCode` to `SourceArg`. Update **both** the hand-written `--source` doc
+comment (`/// Only run a single source (claude|codex|cursor)` → add `|opencode`)
+and the top-level `about` string to mention opencode.
 
 ### 6. `tokusage-cli/src/commands/show.rs`
 - Add `Client::OpenCode` to the `order` array.
@@ -138,6 +144,9 @@ New `sources/opencode.rs` unit tests (using `tempfile`, mirroring `codex.rs`):
 5. `missing_root_returns_empty`.
 6. `default_root_respects_env_first_entry` — `OPENCODE_DATA_DIR="a,b"` resolves
    to `a`.
+7. `db_without_message_table_is_skipped` — an `opencode.db` that lacks the
+   `message` table yields an empty result and no error (the backward-compat
+   case for older databases).
 
 Update `show.rs` tests (`aggregate_buckets_by_client_and_month`,
 `render_contains_key_lines`) to include `Client::OpenCode` and assert
@@ -149,9 +158,14 @@ Update `show.rs` tests (`aggregate_buckets_by_client_and_month`,
 - Add **OpenCode** to the intro "Sources:" line.
 - Add a row to the data-source table:
   `| OpenCode | Parses ~/.local/share/opencode (storage/message JSON + opencode.db) for assistant messages with token usage. |`
+- Refresh the other source enumerations so the docs stay consistent: the opening
+  "merge them with the live Cursor…" sentence, the "reads the same local Claude /
+  Codex / Cursor session files" line, and the example chart (add an OpenCode row).
 
 ## Out of Scope (YAGNI)
 
 - **Multi-directory `OPENCODE_DATA_DIR` lists** — v1 reads only the first entry.
-- **Cost/pricing lookup** — `cost_cents` derives solely from the stored `cost`
-  (usually `0`), matching the Codex source; pricing remains the backend's job.
+- **Cost/pricing lookup** — `cost_cents` derives solely from opencode's stored
+  `cost` field, which may be `0` or a value opencode computed locally. tokusage
+  does no LiteLLM/pricing lookup of its own; any repricing remains the backend's
+  job.
