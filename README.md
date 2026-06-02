@@ -43,47 +43,54 @@ sidecar unless `TOKUSAGE_SKIP_CHECKSUM=1` is explicitly set.
 
 ### Windows
 
-The `install.sh` script is macOS/Linux only, so on native Windows you install
-the `.exe` manually. In PowerShell (Windows 10 1803+ bundles `curl.exe`, `tar`,
-and `Get-FileHash`):
+`install.sh` is macOS/Linux only. On Windows, download the prebuilt binary
+straight from the Releases page:
 
-```powershell
-$ver   = "v0.3.0"   # the release you want
-$stage = "tokusage-$ver-x86_64-pc-windows-msvc"
-$base  = "https://github.com/Enmming/tokusage/releases/download/$ver"
+1. Open the [latest release](https://github.com/Enmming/tokusage/releases/latest).
+2. Under **Assets**, download `tokusage-<version>-x86_64-pc-windows-msvc.zip`.
+3. Right-click the `.zip` → **Extract All…**, then open the extracted folder —
+   it contains `tokusage.exe`.
+4. Move `tokusage.exe` to a folder you'll keep it in, for example
+   `C:\Users\<you>\bin`.
+5. (Optional — lets you type `tokusage` from any terminal) add that folder to
+   your PATH: press Start, search **"Edit environment variables for your
+   account"**, open it, pick **Path** → **Edit** → **New**, paste the folder
+   path, then **OK**. Reopen your terminal.
 
-# 1. Download the archive + its checksum
-curl.exe -fsSL "$base/$stage.tar.gz"        -o "$stage.tar.gz"
-curl.exe -fsSL "$base/$stage.tar.gz.sha256" -o "$stage.tar.gz.sha256"
+Open a new terminal and confirm it works:
 
-# 2. Verify sha256 — these two lines must print the same hash
-(Get-FileHash "$stage.tar.gz" -Algorithm SHA256).Hash.ToLower()
-(Get-Content "$stage.tar.gz.sha256").Split()[0]
-
-# 3. Extract tokusage.exe and move it to a folder you control
-tar -xzf "$stage.tar.gz"
-$dest = "$env:USERPROFILE\bin"
-New-Item -ItemType Directory -Force $dest | Out-Null
-Move-Item "$stage\tokusage.exe" "$dest\tokusage.exe" -Force
-
-# 4. Add that folder to your user PATH (persists; reopen the terminal after)
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-[Environment]::SetEnvironmentVariable("Path", "$dest;$userPath", "User")
+```text
+tokusage --version
 ```
 
-Reopen the terminal, then confirm with `tokusage --version`.
+> Want to check the download's integrity? Each `.zip` ships a matching
+> `.zip.sha256` asset containing its SHA-256 hash.
 
-Windows specifics for the rest of the flow:
+**Running commands:** `tokusage` is a command-line tool — run it from a terminal
+(PowerShell or Windows Terminal), **not** by double-clicking the `.exe` (that
+just flashes a window and closes). If you added the folder to PATH (step 5),
+type the command directly; otherwise `cd` into the folder first and prefix it
+with `.\`:
 
-- `tokusage init` registers a **Task Scheduler** task named `Tokusage` (user
-  level, runs `tokusage submit` every 30 minutes) instead of launchd/systemd.
-  Inspect it with `schtasks /Query /TN Tokusage` or the Task Scheduler GUI.
-- Config and data use the same `~`-relative paths as elsewhere, where `~` is
-  `%USERPROFILE%`: config at `C:\Users\<you>\.config\tokusage\config.toml`,
-  data at `C:\Users\<you>\.local\share\tokusage\`.
-- `tokusage self-update` is **not** supported on Windows (it runs the bash
-  installer). To upgrade, repeat the manual download above with the new
-  version. `tokusage self-uninstall` works normally and removes the task.
+```text
+tokusage show           # if the folder is on your PATH
+.\tokusage.exe show     # run from inside the folder, if it isn't
+```
+
+(The `.exe` is optional when typing — `tokusage show` and `tokusage.exe show`
+are equivalent.)
+
+Windows notes for the rest of the flow:
+
+- `tokusage init` registers a **Task Scheduler** task named `Tokusage` (runs
+  `tokusage submit` every 30 minutes) instead of launchd/systemd. Inspect it in
+  the Task Scheduler app or with `schtasks /Query /TN Tokusage`.
+- Config and data live under your home folder, where `~` is `%USERPROFILE%`:
+  config at `C:\Users\<you>\.config\tokusage\config.toml`, data at
+  `C:\Users\<you>\.local\share\tokusage\`.
+- `tokusage self-update` is **not** supported on Windows. To upgrade, download
+  the newer `.zip` from the Releases page and replace `tokusage.exe`.
+  `tokusage self-uninstall` works normally and removes the scheduled task.
 
 ## First-time setup
 

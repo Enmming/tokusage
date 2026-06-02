@@ -49,19 +49,15 @@ jobs:
             cargo build --release --target ${{ matrix.target }} --bin tokusage
           fi
 
-      - name: Package
-        id: package
+      - name: Package (Unix)
+        if: ${{ !contains(matrix.target, 'windows') }}
         shell: bash
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME}"
           STAGE="tokusage-${VERSION}-${{ matrix.target }}"
           mkdir "$STAGE"
-          if [[ "${{ matrix.target }}" == *windows* ]]; then
-            cp "target/${{ matrix.target }}/release/tokusage.exe" "$STAGE/"
-          else
-            cp "target/${{ matrix.target }}/release/tokusage" "$STAGE/"
-          fi
+          cp "target/${{ matrix.target }}/release/tokusage" "$STAGE/"
           cp README.md LICENSE "$STAGE/" 2>/dev/null || true
           tar czf "${STAGE}.tar.gz" "$STAGE"
           if command -v shasum >/dev/null; then
@@ -70,12 +66,29 @@ jobs:
             sha256sum "${STAGE}.tar.gz" > "${STAGE}.tar.gz.sha256"
           fi
 
+      # Windows ships a .zip (double-click friendly) instead of .tar.gz.
+      - name: Package (Windows)
+        if: ${{ contains(matrix.target, 'windows') }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stage = "tokusage-${env:GITHUB_REF_NAME}-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/tokusage.exe" "$stage/"
+          Copy-Item README.md, LICENSE "$stage/" -ErrorAction SilentlyContinue
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip" -Force
+          $hash = (Get-FileHash "$stage.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $stage.zip" | Out-File -Encoding ascii "$stage.zip.sha256"
+
       - uses: actions/upload-artifact@v6
         with:
           name: tokusage-${{ matrix.target }}
           path: |
             tokusage-*.tar.gz
             tokusage-*.tar.gz.sha256
+            tokusage-*.zip
+            tokusage-*.zip.sha256
+          if-no-files-found: ignore
 
   release:
     name: release
@@ -95,6 +108,8 @@ jobs:
           files: |
             artifacts/*.tar.gz
             artifacts/*.tar.gz.sha256
+            artifacts/*.zip
+            artifacts/*.zip.sha256
             scripts/install.sh
           generate_release_notes: true
           fail_on_unmatched_files: true
