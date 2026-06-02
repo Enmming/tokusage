@@ -307,10 +307,26 @@ mod tests {
         // "now" = mid-June so day-of-month bucketing is timezone-stable.
         let now = Local.with_ymd_and_hms(2026, 6, 15, 12, 0, 0).unwrap();
         let messages = vec![
-            msg(Client::Claude, Utc.with_ymd_and_hms(2026, 6, 10, 12, 0, 0).unwrap(), 100), // current
-            msg(Client::Cursor, Utc.with_ymd_and_hms(2026, 6, 12, 12, 0, 0).unwrap(), 30),  // current
-            msg(Client::Codex, Utc.with_ymd_and_hms(2026, 5, 10, 12, 0, 0).unwrap(), 70),   // last
-            msg(Client::Claude, Utc.with_ymd_and_hms(2026, 4, 10, 12, 0, 0).unwrap(), 999), // excluded
+            msg(
+                Client::Claude,
+                Utc.with_ymd_and_hms(2026, 6, 10, 12, 0, 0).unwrap(),
+                100,
+            ), // current
+            msg(
+                Client::Cursor,
+                Utc.with_ymd_and_hms(2026, 6, 12, 12, 0, 0).unwrap(),
+                30,
+            ), // current
+            msg(
+                Client::Codex,
+                Utc.with_ymd_and_hms(2026, 5, 10, 12, 0, 0).unwrap(),
+                70,
+            ), // last
+            msg(
+                Client::Claude,
+                Utc.with_ymd_and_hms(2026, 4, 10, 12, 0, 0).unwrap(),
+                999,
+            ), // excluded
         ];
 
         let report = aggregate(&messages, now);
@@ -318,15 +334,27 @@ mod tests {
         assert_eq!(report.current_label, "Jun");
         assert_eq!(report.last_label, "May");
 
-        let claude = report.per_client.iter().find(|c| c.client == Client::Claude).unwrap();
+        let claude = report
+            .per_client
+            .iter()
+            .find(|c| c.client == Client::Claude)
+            .unwrap();
         assert_eq!(claude.current.total(), 100); // April message excluded
         assert_eq!(claude.last.total(), 0);
 
-        let codex = report.per_client.iter().find(|c| c.client == Client::Codex).unwrap();
+        let codex = report
+            .per_client
+            .iter()
+            .find(|c| c.client == Client::Codex)
+            .unwrap();
         assert_eq!(codex.current.total(), 0);
         assert_eq!(codex.last.total(), 70);
 
-        let cursor = report.per_client.iter().find(|c| c.client == Client::Cursor).unwrap();
+        let cursor = report
+            .per_client
+            .iter()
+            .find(|c| c.client == Client::Cursor)
+            .unwrap();
         assert_eq!(cursor.current.total(), 30);
 
         // Daily series runs day 1..=today and sums to the current-month total.
@@ -339,8 +367,16 @@ mod tests {
         // January's "last month" is December of the previous year.
         let now = Local.with_ymd_and_hms(2026, 1, 5, 12, 0, 0).unwrap();
         let messages = vec![
-            msg(Client::Claude, Utc.with_ymd_and_hms(2026, 1, 3, 12, 0, 0).unwrap(), 50), // current (Jan)
-            msg(Client::Codex, Utc.with_ymd_and_hms(2025, 12, 20, 12, 0, 0).unwrap(), 80), // last (Dec 2025)
+            msg(
+                Client::Claude,
+                Utc.with_ymd_and_hms(2026, 1, 3, 12, 0, 0).unwrap(),
+                50,
+            ), // current (Jan)
+            msg(
+                Client::Codex,
+                Utc.with_ymd_and_hms(2025, 12, 20, 12, 0, 0).unwrap(),
+                80,
+            ), // last (Dec 2025)
         ];
 
         let report = aggregate(&messages, now);
@@ -348,10 +384,18 @@ mod tests {
         assert_eq!(report.current_label, "Jan");
         assert_eq!(report.last_label, "Dec");
 
-        let claude = report.per_client.iter().find(|c| c.client == Client::Claude).unwrap();
+        let claude = report
+            .per_client
+            .iter()
+            .find(|c| c.client == Client::Claude)
+            .unwrap();
         assert_eq!(claude.current.total(), 50);
 
-        let codex = report.per_client.iter().find(|c| c.client == Client::Codex).unwrap();
+        let codex = report
+            .per_client
+            .iter()
+            .find(|c| c.client == Client::Codex)
+            .unwrap();
         assert_eq!(codex.last.total(), 80);
 
         // Daily series is truncated to "today" (Jan 5).
@@ -362,9 +406,21 @@ mod tests {
     fn render_contains_key_lines() {
         let report = Report {
             per_client: vec![
-                ClientMonths { client: Client::Claude, current: tb(2_400_000), last: tb(1_600_000) },
-                ClientMonths { client: Client::Codex, current: tb(800_000), last: tb(1_100_000) },
-                ClientMonths { client: Client::Cursor, current: tb(300_000), last: tb(200_000) },
+                ClientMonths {
+                    client: Client::Claude,
+                    current: tb(2_400_000),
+                    last: tb(1_600_000),
+                },
+                ClientMonths {
+                    client: Client::Codex,
+                    current: tb(800_000),
+                    last: tb(1_100_000),
+                },
+                ClientMonths {
+                    client: Client::Cursor,
+                    current: tb(300_000),
+                    last: tb(200_000),
+                },
             ],
             daily_current: vec![0, 1_000, 500_000, 900_000],
             current_label: "Jun".into(),
