@@ -45,6 +45,7 @@ tokusage submit  # send the first payload immediately
 
 ```bash
 tokusage status       # show config, install state, queued retries, last run time
+tokusage show         # local chart of this vs last month token usage (no network)
 tokusage submit       # run once on demand
 tokusage self-update  # fetch latest release and re-install
 ```

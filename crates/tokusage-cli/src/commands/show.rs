@@ -1,3 +1,4 @@
+use anyhow::Result;
 use chrono::{DateTime, Datelike, Local};
 use tokusage_core::{Client, TokenBreakdown, UnifiedMessage};
 
@@ -219,6 +220,26 @@ pub fn render(report: &Report) -> String {
     ));
 
     out
+}
+
+pub fn run() -> Result<()> {
+    let messages = crate::collect::collect(None)?;
+    let report = aggregate(&messages, Local::now());
+
+    let has_data = report
+        .per_client
+        .iter()
+        .any(|c| c.current.total() > 0 || c.last.total() > 0);
+    if !has_data {
+        println!(
+            "No local token usage found yet for {}–{}. Run your AI tools, then try again (or 'tokusage submit').",
+            report.last_label, report.current_label
+        );
+        return Ok(());
+    }
+
+    print!("{}", render(&report));
+    Ok(())
 }
 
 #[cfg(test)]
