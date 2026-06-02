@@ -26,6 +26,8 @@ configured endpoint every 30 minutes.
 
 ## Install
 
+### macOS / Linux
+
 ```bash
 curl -sSL https://github.com/Enmming/tokusage/releases/latest/download/install.sh | bash
 ```
@@ -33,9 +35,55 @@ curl -sSL https://github.com/Enmming/tokusage/releases/latest/download/install.s
 Downloads the right platform binary, verifies sha256, installs to
 `~/.local/bin/tokusage`, strips macOS Gatekeeper quarantine.
 
-Pin a version with `TOKUSAGE_VERSION=v0.2.0`; override the install directory
+Pin a version with `TOKUSAGE_VERSION=v0.3.0`; override the install directory
 with `TOKUSAGE_BIN_DIR=...`. The installer requires the release `.sha256`
 sidecar unless `TOKUSAGE_SKIP_CHECKSUM=1` is explicitly set.
+
+(WSL counts as Linux — use the command above inside the WSL shell.)
+
+### Windows
+
+The `install.sh` script is macOS/Linux only, so on native Windows you install
+the `.exe` manually. In PowerShell (Windows 10 1803+ bundles `curl.exe`, `tar`,
+and `Get-FileHash`):
+
+```powershell
+$ver   = "v0.3.0"   # the release you want
+$stage = "tokusage-$ver-x86_64-pc-windows-msvc"
+$base  = "https://github.com/Enmming/tokusage/releases/download/$ver"
+
+# 1. Download the archive + its checksum
+curl.exe -fsSL "$base/$stage.tar.gz"        -o "$stage.tar.gz"
+curl.exe -fsSL "$base/$stage.tar.gz.sha256" -o "$stage.tar.gz.sha256"
+
+# 2. Verify sha256 — these two lines must print the same hash
+(Get-FileHash "$stage.tar.gz" -Algorithm SHA256).Hash.ToLower()
+(Get-Content "$stage.tar.gz.sha256").Split()[0]
+
+# 3. Extract tokusage.exe and move it to a folder you control
+tar -xzf "$stage.tar.gz"
+$dest = "$env:USERPROFILE\bin"
+New-Item -ItemType Directory -Force $dest | Out-Null
+Move-Item "$stage\tokusage.exe" "$dest\tokusage.exe" -Force
+
+# 4. Add that folder to your user PATH (persists; reopen the terminal after)
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+[Environment]::SetEnvironmentVariable("Path", "$dest;$userPath", "User")
+```
+
+Reopen the terminal, then confirm with `tokusage --version`.
+
+Windows specifics for the rest of the flow:
+
+- `tokusage init` registers a **Task Scheduler** task named `Tokusage` (user
+  level, runs `tokusage submit` every 30 minutes) instead of launchd/systemd.
+  Inspect it with `schtasks /Query /TN Tokusage` or the Task Scheduler GUI.
+- Config and data use the same `~`-relative paths as elsewhere, where `~` is
+  `%USERPROFILE%`: config at `C:\Users\<you>\.config\tokusage\config.toml`,
+  data at `C:\Users\<you>\.local\share\tokusage\`.
+- `tokusage self-update` is **not** supported on Windows (it runs the bash
+  installer). To upgrade, repeat the manual download above with the new
+  version. `tokusage self-uninstall` works normally and removes the task.
 
 ## First-time setup
 
@@ -104,6 +152,10 @@ and queue. The binary itself is left for you to remove.
 | Linux systemd timer | `~/.config/systemd/user/tokusage.timer` |
 | Windows Task Scheduler task | `Tokusage` |
 | Run log (scheduler stdout/stderr) | `~/.local/share/tokusage/logs/submit.log` |
+
+On Windows `~` resolves to `%USERPROFILE%` (e.g. `C:\Users\<you>`), so the
+config and data paths above become `C:\Users\<you>\.config\tokusage\` and
+`C:\Users\<you>\.local\share\tokusage\`.
 
 ## Data sent
 
