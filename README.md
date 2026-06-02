@@ -7,6 +7,10 @@ on a schedule. Sources: **Claude Code**, **Codex CLI**, **Cursor IDE**.
 No cookies to copy, no dashboards to open — run `tokusage login` once, then
 `tokusage init`, and the rest is automatic.
 
+Want a quick local glance without the backend? `tokusage show` draws a
+month-over-month usage chart straight from your local session files — no
+network, no login.
+
 ## What it does
 
 For each AI tool:
@@ -50,6 +54,36 @@ tokusage submit       # run once on demand
 tokusage self-update  # fetch latest release and re-install
 ```
 
+## View usage locally
+
+`tokusage show` reads the same local Claude / Codex / Cursor session files as
+`submit` and renders a plain-text chart comparing **this calendar month** with
+**last month**. It runs fully offline — no login, no network — and never prints
+raw JSON.
+
+```text
+$ tokusage show
+tokusage — token usage (local)
+
+Claude  Jun ████████████  2.4M  May ████████      1.6M
+Codex   Jun ████          0.8M  May ██████        1.1M
+Cursor  Jun ██            0.3M  May █             0.2M
+
+Daily (Jun): ▁▂▃▅▇▆▃▂▄▅▇█▆▃▂▁
+──────────────────────────────────
+Total Jun 3.5M  May 2.9M  (+21%)
+Jun split: in 0.2M · out 0.3M · cache 3.0M
+```
+
+- One row per source; the two bars are this month vs last month, scaled against
+  a shared maximum so heights are comparable across sources and months.
+- `Daily` is a sparkline of the current month's per-day totals, up to today.
+- `Total` sums all sources, with the month-over-month change in parentheses.
+- `split` breaks the current month into input / output / cache tokens.
+
+If no local usage is found yet, `show` prints a short hint instead of an empty
+chart.
+
 ## Uninstall
 
 ```bash
@@ -78,7 +112,7 @@ Every 30 minutes tokusage POSTs a JSON payload to
 
 ```json
 {
-  "client_version": "0.2.0",
+  "client_version": "0.3.0",
   "submitted_at": "2026-04-17T10:30:00Z",
   "events": [
     {
