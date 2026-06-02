@@ -134,6 +134,93 @@ pub fn aggregate(messages: &[UnifiedMessage], now: DateTime<Local>) -> Report {
     }
 }
 
+const BAR_WIDTH: usize = 12;
+
+fn client_name(c: Client) -> &'static str {
+    match c {
+        Client::Claude => "Claude",
+        Client::Codex => "Codex",
+        Client::Cursor => "Cursor",
+    }
+}
+
+fn pct_change(cur: i64, last: i64) -> String {
+    if last <= 0 {
+        return "(—)".to_string();
+    }
+    let p = ((cur - last) as f64 / last as f64 * 100.0).round() as i64;
+    if p >= 0 {
+        format!("(+{}%)", p)
+    } else {
+        format!("({}%)", p)
+    }
+}
+
+/// Render the full chart as a printable string (no trailing newline trimming).
+pub fn render(report: &Report) -> String {
+    let max = report
+        .per_client
+        .iter()
+        .flat_map(|c| [c.current.total(), c.last.total()])
+        .max()
+        .unwrap_or(0);
+
+    let mut out = String::new();
+    out.push_str("tokusage — token usage (本机)\n\n");
+
+    for c in &report.per_client {
+        let cur = c.current.total();
+        let last = c.last.total();
+        out.push_str(&format!(
+            "{:<7} {} {:<wb$} {:>6}  {} {:<wb$} {:>6}\n",
+            client_name(c.client),
+            report.current_label,
+            bar(cur, max, BAR_WIDTH),
+            humanize(cur),
+            report.last_label,
+            bar(last, max, BAR_WIDTH),
+            humanize(last),
+            wb = BAR_WIDTH,
+        ));
+    }
+
+    out.push('\n');
+    out.push_str(&format!(
+        "Daily ({}): {}\n",
+        report.current_label,
+        sparkline(&report.daily_current)
+    ));
+
+    let cur_total: i64 = report.per_client.iter().map(|c| c.current.total()).sum();
+    let last_total: i64 = report.per_client.iter().map(|c| c.last.total()).sum();
+    out.push_str("──────────────────────────────────\n");
+    out.push_str(&format!(
+        "Total {} {}  {} {}  {}\n",
+        report.current_label,
+        humanize(cur_total),
+        report.last_label,
+        humanize(last_total),
+        pct_change(cur_total, last_total),
+    ));
+
+    let (in_, out_, cache) = report.per_client.iter().fold((0, 0, 0), |(i, o, c), cm| {
+        (
+            i + cm.current.input,
+            o + cm.current.output,
+            c + cm.current.cache_read + cm.current.cache_write,
+        )
+    });
+    out.push_str(&format!(
+        "{} split: in {} · out {} · cache {}\n",
+        report.current_label,
+        humanize(in_),
+        humanize(out_),
+        humanize(cache),
+    ));
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -183,6 +270,13 @@ mod tests {
         assert_eq!(sparkline(&[0, 50, 100]), "▁▅█");
     }
 
+    fn tb(input: i64) -> TokenBreakdown {
+        TokenBreakdown {
+            input,
+            ..Default::default()
+        }
+    }
+
     #[test]
     fn aggregate_buckets_by_client_and_month() {
         // "now" = mid-June so day-of-month bucketing is timezone-stable.
@@ -213,5 +307,31 @@ mod tests {
         // Daily series runs day 1..=today and sums to the current-month total.
         assert_eq!(report.daily_current.len(), 15);
         assert_eq!(report.daily_current.iter().sum::<i64>(), 130);
+    }
+
+    #[test]
+    fn render_contains_key_lines() {
+        let report = Report {
+            per_client: vec![
+                ClientMonths { client: Client::Claude, current: tb(2_400_000), last: tb(1_600_000) },
+                ClientMonths { client: Client::Codex, current: tb(800_000), last: tb(1_100_000) },
+                ClientMonths { client: Client::Cursor, current: tb(300_000), last: tb(200_000) },
+            ],
+            daily_current: vec![0, 1_000, 500_000, 900_000],
+            current_label: "Jun".into(),
+            last_label: "May".into(),
+        };
+
+        let s = render(&report);
+
+        assert!(s.contains("Claude"));
+        assert!(s.contains("Codex"));
+        assert!(s.contains("Cursor"));
+        assert!(s.contains("Jun"));
+        assert!(s.contains("May"));
+        assert!(s.contains("2.4M"));
+        assert!(s.contains("Total"));
+        assert!(s.contains("split:"));
+        assert!(s.contains("Daily (Jun):"));
     }
 }
