@@ -16,6 +16,7 @@ use crate::model::{Client, TokenBreakdown, UnifiedMessage};
 use chrono::{TimeZone, Utc};
 use serde_json::Value;
 use std::collections::HashSet;
+use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -35,6 +36,20 @@ pub fn scan(root: &Path) -> ScanResult {
 
     let mut out = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
+
+    // DB tier first (newer, migrated copy wins on a message-id collision).
+    if let Some(db) = db_path(root) {
+        match scan_db(&db) {
+            Ok(msgs) => {
+                for m in msgs {
+                    if seen.insert(m.event_key.clone()) {
+                        out.push(m);
+                    }
+                }
+            }
+            Err(err) => tracing::warn!(?db, error = %err, "failed to read opencode db"),
+        }
+    }
 
     // JSON tier: storage/message/**/*.json (one message per file).
     let messages_dir = root.join("storage").join("message");
@@ -60,6 +75,65 @@ pub fn scan(root: &Path) -> ScanResult {
         }
     }
 
+    Ok(out)
+}
+
+/// `opencode.db`, else the first `opencode-*.db` channel database, if present.
+fn db_path(root: &Path) -> Option<PathBuf> {
+    let default = root.join("opencode.db");
+    if default.is_file() {
+        return Some(default);
+    }
+    let mut channels: Vec<PathBuf> = fs::read_dir(root)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_file()
+                && p.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("opencode-") && n.ends_with(".db"))
+        })
+        .collect();
+    channels.sort();
+    channels.into_iter().next()
+}
+
+fn scan_db(db: &Path) -> anyhow::Result<Vec<UnifiedMessage>> {
+    let conn =
+        rusqlite::Connection::open_with_flags(db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    // An older database may not have migrated to the `message` table yet.
+    let mut stmt = match conn.prepare("SELECT id, session_id, data FROM message") {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::debug!(error = %e, "opencode message table not queryable; skipping db tier");
+            return Ok(Vec::new());
+        }
+    };
+    let rows = stmt.query_map([], |row| {
+        let id: String = row.get(0)?;
+        let session_id: Option<String> = row.get(1)?;
+        let data: String = row.get(2)?;
+        Ok((id, session_id, data))
+    })?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        let (id, session_id, data) = match row {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "skipping malformed opencode db row");
+                continue;
+            }
+        };
+        let value: Value = match serde_json::from_str(&data) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if let Some(m) = message_value_to_unified(&value, Some(id), session_id, "db") {
+            out.push(m);
+        }
+    }
     Ok(out)
 }
 
@@ -228,6 +302,91 @@ mod tests {
         std::env::set_var("OPENCODE_DATA_DIR", "/tmp/first , /tmp/second");
         assert_eq!(default_root(), Some(PathBuf::from("/tmp/first")));
         std::env::remove_var("OPENCODE_DATA_DIR");
+    }
+
+    fn make_db(path: &Path, rows: &[(&str, &str, &str)]) {
+        let conn = rusqlite::Connection::open(path).unwrap();
+        conn.execute(
+            "CREATE TABLE message (id TEXT, session_id TEXT, data TEXT)",
+            [],
+        )
+        .unwrap();
+        for (id, session_id, data) in rows {
+            conn.execute(
+                "INSERT INTO message (id, session_id, data) VALUES (?1, ?2, ?3)",
+                rusqlite::params![id, session_id, data],
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn parses_sqlite_message() {
+        let tmp = TempDir::new().unwrap();
+        make_db(
+            &tmp.path().join("opencode.db"),
+            &[(
+                "msg_db",
+                "ses_db",
+                r#"{"providerID":"anthropic","modelID":"claude-sonnet-4-20250514","time":{"created":1767312000000},"tokens":{"input":120,"output":60,"cache":{"read":12,"write":24}},"cost":0.03}"#,
+            )],
+        );
+
+        let messages = scan(tmp.path()).unwrap();
+        assert_eq!(messages.len(), 1);
+        let m = &messages[0];
+        assert_eq!(m.event_key, "opencode:msg_db");
+        assert_eq!(m.session_key.as_deref(), Some("opencode:ses_db"));
+        assert_eq!(m.tokens.input, 120);
+        assert_eq!(m.tokens.cache_write, 24);
+        assert_eq!(m.tokens.cache_read, 12);
+        assert!((m.cost_cents - 3.0).abs() < 1e-9);
+        assert_eq!(m.raw_payload["tier"], "db");
+    }
+
+    #[test]
+    fn dedupes_json_and_db_by_id() {
+        let tmp = TempDir::new().unwrap();
+        // Same id "msg_1" in both tiers; the DB copy must win.
+        write(tmp.path(), "storage/message/ses_a/msg_1.json", MSG);
+        make_db(
+            &tmp.path().join("opencode.db"),
+            &[(
+                "msg_1",
+                "ses_a",
+                r#"{"id":"msg_1","providerID":"anthropic","modelID":"db-model","time":{"created":1767312000000},"tokens":{"input":1,"output":1}}"#,
+            )],
+        );
+
+        let messages = scan(tmp.path()).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].event_key, "opencode:msg_1");
+        assert_eq!(messages[0].model, "db-model"); // DB tier read first wins
+        assert_eq!(messages[0].raw_payload["tier"], "db");
+    }
+
+    #[test]
+    fn db_without_message_table_is_skipped() {
+        let tmp = TempDir::new().unwrap();
+        let conn = rusqlite::Connection::open(tmp.path().join("opencode.db")).unwrap();
+        conn.execute("CREATE TABLE other (x TEXT)", []).unwrap();
+        drop(conn);
+
+        assert!(scan(tmp.path()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn json_id_falls_back_to_file_stem() {
+        let tmp = TempDir::new().unwrap();
+        // No "id" field in the JSON; the file stem (msg_2) supplies the id.
+        write(
+            tmp.path(),
+            "storage/message/ses_b/msg_2.json",
+            r#"{"sessionID":"ses_b","providerID":"anthropic","modelID":"m","time":{"created":1767312000000},"tokens":{"input":5,"output":5}}"#,
+        );
+        let messages = scan(tmp.path()).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].event_key, "opencode:msg_2");
     }
 
     // Guards env-var mutation so parallel tests do not race on the process env.
