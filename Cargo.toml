@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/tokusage-core", "crates/tokusage-cli"]
 
 [workspace.package]
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 authors = ["tokusage contributors"]
 license = "MIT"

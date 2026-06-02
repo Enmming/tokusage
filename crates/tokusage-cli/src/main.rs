@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 
 mod claude_hook;
+mod collect;
 mod commands;
 mod config;
 mod log_rotate;
@@ -56,6 +57,8 @@ enum Command {
     },
     /// Show config, last submit, and queue state
     Status,
+    /// Show a local token usage chart for this and last month
+    Show,
     /// Check GitHub Releases and replace self with the latest version
     SelfUpdate,
     /// Remove launchd, Claude hook, manifest, and all tokusage files
@@ -81,6 +84,7 @@ fn main() -> Result<()> {
         Command::Login { api_url, token } => commands::login::run(api_url, token),
         Command::Submit { dry_run, source } => commands::submit::run(dry_run, source),
         Command::Status => commands::status::run(),
+        Command::Show => commands::show::run(),
         Command::SelfUpdate => commands::self_update::run(),
         Command::SelfUninstall { yes } => commands::self_uninstall::run(yes),
     }

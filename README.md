@@ -7,6 +7,10 @@ on a schedule. Sources: **Claude Code**, **Codex CLI**, **Cursor IDE**.
 No cookies to copy, no dashboards to open — run `tokusage login` once, then
 `tokusage init`, and the rest is automatic.
 
+Want a quick local glance without the backend? `tokusage show` draws a
+month-over-month usage chart straight from your local session files — no
+network, no login.
+
 ## What it does
 
 For each AI tool:
@@ -22,6 +26,8 @@ configured endpoint every 30 minutes.
 
 ## Install
 
+### macOS / Linux
+
 ```bash
 curl -sSL https://github.com/Enmming/tokusage/releases/latest/download/install.sh | bash
 ```
@@ -29,9 +35,55 @@ curl -sSL https://github.com/Enmming/tokusage/releases/latest/download/install.s
 Downloads the right platform binary, verifies sha256, installs to
 `~/.local/bin/tokusage`, strips macOS Gatekeeper quarantine.
 
-Pin a version with `TOKUSAGE_VERSION=v0.2.0`; override the install directory
+Pin a version with `TOKUSAGE_VERSION=v0.3.0`; override the install directory
 with `TOKUSAGE_BIN_DIR=...`. The installer requires the release `.sha256`
 sidecar unless `TOKUSAGE_SKIP_CHECKSUM=1` is explicitly set.
+
+(WSL counts as Linux — use the command above inside the WSL shell.)
+
+### Windows
+
+The `install.sh` script is macOS/Linux only, so on native Windows you install
+the `.exe` manually. In PowerShell (Windows 10 1803+ bundles `curl.exe`, `tar`,
+and `Get-FileHash`):
+
+```powershell
+$ver   = "v0.3.0"   # the release you want
+$stage = "tokusage-$ver-x86_64-pc-windows-msvc"
+$base  = "https://github.com/Enmming/tokusage/releases/download/$ver"
+
+# 1. Download the archive + its checksum
+curl.exe -fsSL "$base/$stage.tar.gz"        -o "$stage.tar.gz"
+curl.exe -fsSL "$base/$stage.tar.gz.sha256" -o "$stage.tar.gz.sha256"
+
+# 2. Verify sha256 — these two lines must print the same hash
+(Get-FileHash "$stage.tar.gz" -Algorithm SHA256).Hash.ToLower()
+(Get-Content "$stage.tar.gz.sha256").Split()[0]
+
+# 3. Extract tokusage.exe and move it to a folder you control
+tar -xzf "$stage.tar.gz"
+$dest = "$env:USERPROFILE\bin"
+New-Item -ItemType Directory -Force $dest | Out-Null
+Move-Item "$stage\tokusage.exe" "$dest\tokusage.exe" -Force
+
+# 4. Add that folder to your user PATH (persists; reopen the terminal after)
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+[Environment]::SetEnvironmentVariable("Path", "$dest;$userPath", "User")
+```
+
+Reopen the terminal, then confirm with `tokusage --version`.
+
+Windows specifics for the rest of the flow:
+
+- `tokusage init` registers a **Task Scheduler** task named `Tokusage` (user
+  level, runs `tokusage submit` every 30 minutes) instead of launchd/systemd.
+  Inspect it with `schtasks /Query /TN Tokusage` or the Task Scheduler GUI.
+- Config and data use the same `~`-relative paths as elsewhere, where `~` is
+  `%USERPROFILE%`: config at `C:\Users\<you>\.config\tokusage\config.toml`,
+  data at `C:\Users\<you>\.local\share\tokusage\`.
+- `tokusage self-update` is **not** supported on Windows (it runs the bash
+  installer). To upgrade, repeat the manual download above with the new
+  version. `tokusage self-uninstall` works normally and removes the task.
 
 ## First-time setup
 
@@ -45,9 +97,40 @@ tokusage submit  # send the first payload immediately
 
 ```bash
 tokusage status       # show config, install state, queued retries, last run time
+tokusage show         # local chart of this vs last month token usage (no network)
 tokusage submit       # run once on demand
 tokusage self-update  # fetch latest release and re-install
 ```
+
+## View usage locally
+
+`tokusage show` reads the same local Claude / Codex / Cursor session files as
+`submit` and renders a plain-text chart comparing **this calendar month** with
+**last month**. It runs fully offline — no login, no network — and never prints
+raw JSON.
+
+```text
+$ tokusage show
+tokusage — token usage (local)
+
+Claude  Jun ████████████  2.4M  May ████████      1.6M
+Codex   Jun ████          0.8M  May ██████        1.1M
+Cursor  Jun ██            0.3M  May █             0.2M
+
+Daily (Jun): ▁▂▃▅▇▆▃▂▄▅▇█▆▃▂▁
+──────────────────────────────────
+Total Jun 3.5M  May 2.9M  (+21%)
+Jun split: in 0.2M · out 0.3M · cache 3.0M
+```
+
+- One row per source; the two bars are this month vs last month, scaled against
+  a shared maximum so heights are comparable across sources and months.
+- `Daily` is a sparkline of the current month's per-day totals, up to today.
+- `Total` sums all sources, with the month-over-month change in parentheses.
+- `split` breaks the current month into input / output / cache tokens.
+
+If no local usage is found yet, `show` prints a short hint instead of an empty
+chart.
 
 ## Uninstall
 
@@ -70,6 +153,10 @@ and queue. The binary itself is left for you to remove.
 | Windows Task Scheduler task | `Tokusage` |
 | Run log (scheduler stdout/stderr) | `~/.local/share/tokusage/logs/submit.log` |
 
+On Windows `~` resolves to `%USERPROFILE%` (e.g. `C:\Users\<you>`), so the
+config and data paths above become `C:\Users\<you>\.config\tokusage\` and
+`C:\Users\<you>\.local\share\tokusage\`.
+
 ## Data sent
 
 Every 30 minutes tokusage POSTs a JSON payload to
@@ -77,7 +164,7 @@ Every 30 minutes tokusage POSTs a JSON payload to
 
 ```json
 {
-  "client_version": "0.2.0",
+  "client_version": "0.3.0",
   "submitted_at": "2026-04-17T10:30:00Z",
   "events": [
     {
