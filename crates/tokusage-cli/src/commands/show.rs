@@ -2,15 +2,17 @@ use anyhow::Result;
 use chrono::{DateTime, Datelike, Local};
 use tokusage_core::{Client, TokenBreakdown, UnifiedMessage};
 
-/// Format a token count compactly: `999`, `1.0K`, `2.4M`.
+/// Format a token count compactly: `999`, `1.0K`, `2.4M`, `1.1B`.
 fn humanize(n: i64) -> String {
     let v = n as f64;
     if n < 1_000 {
         n.to_string()
     } else if n < 1_000_000 {
         format!("{:.1}K", v / 1_000.0)
-    } else {
+    } else if n < 1_000_000_000 {
         format!("{:.1}M", v / 1_000_000.0)
+    } else {
+        format!("{:.1}B", v / 1_000_000_000.0)
     }
 }
 
@@ -167,7 +169,7 @@ pub fn render(report: &Report) -> String {
         .unwrap_or(0);
 
     let mut out = String::new();
-    out.push_str("tokusage — token usage (本机)\n\n");
+    out.push_str("tokusage — token usage (local)\n\n");
 
     for c in &report.per_client {
         let cur = c.current.total();
@@ -267,12 +269,14 @@ mod tests {
     }
 
     #[test]
-    fn humanize_scales_to_k_and_m() {
+    fn humanize_scales_to_k_m_and_b() {
         assert_eq!(humanize(0), "0");
         assert_eq!(humanize(999), "999");
         assert_eq!(humanize(1_000), "1.0K");
         assert_eq!(humanize(12_345), "12.3K");
         assert_eq!(humanize(2_400_000), "2.4M");
+        assert_eq!(humanize(1_068_200_000), "1.1B");
+        assert_eq!(humanize(2_202_000_000), "2.2B");
     }
 
     #[test]
@@ -328,6 +332,30 @@ mod tests {
         // Daily series runs day 1..=today and sums to the current-month total.
         assert_eq!(report.daily_current.len(), 15);
         assert_eq!(report.daily_current.iter().sum::<i64>(), 130);
+    }
+
+    #[test]
+    fn aggregate_handles_january_rollover() {
+        // January's "last month" is December of the previous year.
+        let now = Local.with_ymd_and_hms(2026, 1, 5, 12, 0, 0).unwrap();
+        let messages = vec![
+            msg(Client::Claude, Utc.with_ymd_and_hms(2026, 1, 3, 12, 0, 0).unwrap(), 50), // current (Jan)
+            msg(Client::Codex, Utc.with_ymd_and_hms(2025, 12, 20, 12, 0, 0).unwrap(), 80), // last (Dec 2025)
+        ];
+
+        let report = aggregate(&messages, now);
+
+        assert_eq!(report.current_label, "Jan");
+        assert_eq!(report.last_label, "Dec");
+
+        let claude = report.per_client.iter().find(|c| c.client == Client::Claude).unwrap();
+        assert_eq!(claude.current.total(), 50);
+
+        let codex = report.per_client.iter().find(|c| c.client == Client::Codex).unwrap();
+        assert_eq!(codex.last.total(), 80);
+
+        // Daily series is truncated to "today" (Jan 5).
+        assert_eq!(report.daily_current.len(), 5);
     }
 
     #[test]
