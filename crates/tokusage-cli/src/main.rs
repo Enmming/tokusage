@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 
 mod claude_hook;
+mod collect;
 mod commands;
 mod config;
 mod log_rotate;
