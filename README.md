@@ -2,7 +2,7 @@
 
 Scan your local AI coding tool session files, merge them with the live Cursor
 dashboard API, and POST raw usage events to your team's internal endpoint
-on a schedule. Sources: **Claude Code**, **Codex CLI**, **Cursor IDE**.
+on a schedule. Sources: **Claude Code**, **Codex CLI**, **Cursor IDE**, **OpenCode**.
 
 No cookies to copy, no dashboards to open — run `tokusage login` once, then
 `tokusage init`, and the rest is automatic.
@@ -20,8 +20,9 @@ For each AI tool:
 | Claude Code | Parses `~/.claude/projects/**/*.jsonl` for assistant entries with `usage`. |
 | Codex CLI   | Parses `$CODEX_HOME/sessions/**/*.jsonl` for non-empty `last_token_usage` snapshots. |
 | Cursor IDE  | Reads the JWT Cursor IDE stores in its SQLite state DB, then calls `api2.cursor.sh/aiserver.v1.DashboardService/GetFilteredUsageEvents`. |
+| OpenCode    | Parses `~/.local/share/opencode` (`storage/message` JSON + `opencode.db`) for assistant messages with token usage. |
 
-All three are normalized into a single payload and POSTed to your
+All four are normalized into a single payload and POSTed to your
 configured endpoint every 30 minutes.
 
 ## Install
@@ -111,7 +112,7 @@ tokusage self-update  # fetch latest release and re-install
 
 ## View usage locally
 
-`tokusage show` reads the same local Claude / Codex / Cursor session files as
+`tokusage show` reads the same local Claude / Codex / Cursor / OpenCode session files as
 `submit` and renders a plain-text chart comparing **this calendar month** with
 **last month**. It runs fully offline — no login, no network — and never prints
 raw JSON.
@@ -120,9 +121,10 @@ raw JSON.
 $ tokusage show
 tokusage — token usage (local)
 
-Claude  Jun ████████████  2.4M  May ████████      1.6M
-Codex   Jun ████          0.8M  May ██████        1.1M
-Cursor  Jun ██            0.3M  May █             0.2M
+Claude    Jun ████████████  2.4M  May ████████      1.6M
+Codex     Jun ████          0.8M  May ██████        1.1M
+Cursor    Jun ██            0.3M  May █             0.2M
+OpenCode  Jun █             0.1M  May               0.0M
 
 Daily (Jun): ▁▂▃▅▇▆▃▂▄▅▇█▆▃▂▁
 ──────────────────────────────────
@@ -200,6 +202,7 @@ Per-source identity rules:
 - `Claude`: `event_key` is the assistant row `uuid`. tokusage still groups by `requestId + message.id` inside one JSONL file so streamed snapshots collapse to the final row before submit.
 - `Codex`: `event_key` is `session + logical turn + timestamp + usage fingerprint`. Multiple non-empty `token_count` deltas from the same turn are preserved; same-timestamp twins with identical usage are collapsed before submit.
 - `Cursor`: `event_key` is `timestamp + owningUser + model + kind + ui/headless`. That is the best identity Cursor currently exposes in its usage payload; `session_key` and `seq` stay null.
+- `OpenCode`: `event_key` is `opencode:<message id>`. The same id appears in both the `storage/message` JSON file and the `opencode.db` SQLite row, so the two tiers collapse to one event (the DB copy wins). `session_key` is `opencode:<sessionID>`; `seq` stays null.
 
 Cursor connectivity notes:
 

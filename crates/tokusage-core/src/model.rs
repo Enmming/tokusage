@@ -8,6 +8,7 @@ pub enum Client {
     Claude,
     Codex,
     Cursor,
+    OpenCode,
 }
 
 impl Client {
@@ -16,6 +17,7 @@ impl Client {
             Client::Claude => "claude",
             Client::Codex => "codex",
             Client::Cursor => "cursor",
+            Client::OpenCode => "opencode",
         }
     }
 }
@@ -77,3 +79,19 @@ pub struct SubmitRequest {
 }
 
 pub type SubmitPayload = SubmitRequest;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opencode_client_is_lowercase_on_wire() {
+        assert_eq!(Client::OpenCode.as_str(), "opencode");
+        assert_eq!(
+            serde_json::to_string(&Client::OpenCode).unwrap(),
+            "\"opencode\""
+        );
+        let back: Client = serde_json::from_str("\"opencode\"").unwrap();
+        assert_eq!(back, Client::OpenCode);
+    }
+}

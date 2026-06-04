@@ -9,6 +9,7 @@ pub fn collect(source: Option<SourceArg>) -> Result<Vec<UnifiedMessage>> {
         Some(SourceArg::Claude) => collect_claude(),
         Some(SourceArg::Codex) => collect_codex(),
         Some(SourceArg::Cursor) => collect_cursor(),
+        Some(SourceArg::OpenCode) => collect_opencode(),
         None => {
             let mut out = Vec::new();
             match collect_claude() {
@@ -22,6 +23,10 @@ pub fn collect(source: Option<SourceArg>) -> Result<Vec<UnifiedMessage>> {
             match collect_cursor() {
                 Ok(mut v) => out.append(&mut v),
                 Err(e) => tracing::warn!("cursor source failed: {e}"),
+            }
+            match collect_opencode() {
+                Ok(mut v) => out.append(&mut v),
+                Err(e) => tracing::warn!("opencode source failed: {e}"),
             }
             Ok(out)
         }
@@ -45,4 +50,10 @@ fn collect_cursor() -> Result<Vec<UnifiedMessage>> {
         .enable_all()
         .build()?;
     rt.block_on(sources::cursor::scan())
+}
+
+fn collect_opencode() -> Result<Vec<UnifiedMessage>> {
+    let root =
+        sources::opencode::default_root().context("could not resolve OpenCode data directory")?;
+    sources::opencode::scan(&root)
 }

@@ -16,13 +16,14 @@ enum SourceArg {
     Claude,
     Codex,
     Cursor,
+    OpenCode,
 }
 
 #[derive(Parser)]
 #[command(
     name = "tokusage",
     version,
-    about = "Track AI coding tool token usage across Claude Code, Codex, and Cursor"
+    about = "Track AI coding tool token usage across Claude Code, Codex, Cursor, and OpenCode"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -51,7 +52,7 @@ enum Command {
         /// Print the payload without actually submitting
         #[arg(long)]
         dry_run: bool,
-        /// Only run a single source (claude|codex|cursor)
+        /// Only run a single source (claude|codex|cursor|opencode)
         #[arg(long)]
         source: Option<SourceArg>,
     },

@@ -97,7 +97,12 @@ pub fn aggregate(messages: &[UnifiedMessage], now: DateTime<Local>) -> Report {
         (cur_y, cur_m - 1)
     };
 
-    let order = [Client::Claude, Client::Codex, Client::Cursor];
+    let order = [
+        Client::Claude,
+        Client::Codex,
+        Client::Cursor,
+        Client::OpenCode,
+    ];
     let mut per_client: Vec<ClientMonths> = order
         .iter()
         .map(|&c| ClientMonths {
@@ -144,6 +149,7 @@ fn client_name(c: Client) -> &'static str {
         Client::Claude => "Claude",
         Client::Codex => "Codex",
         Client::Cursor => "Cursor",
+        Client::OpenCode => "OpenCode",
     }
 }
 
@@ -175,7 +181,7 @@ pub fn render(report: &Report) -> String {
         let cur = c.current.total();
         let last = c.last.total();
         out.push_str(&format!(
-            "{:<7} {} {:<wb$} {:>6}  {} {:<wb$} {:>6}\n",
+            "{:<8} {} {:<wb$} {:>6}  {} {:<wb$} {:>6}\n",
             client_name(c.client),
             report.current_label,
             bar(cur, max, BAR_WIDTH),
@@ -318,6 +324,11 @@ mod tests {
                 30,
             ), // current
             msg(
+                Client::OpenCode,
+                Utc.with_ymd_and_hms(2026, 6, 11, 12, 0, 0).unwrap(),
+                40,
+            ), // current
+            msg(
                 Client::Codex,
                 Utc.with_ymd_and_hms(2026, 5, 10, 12, 0, 0).unwrap(),
                 70,
@@ -357,9 +368,16 @@ mod tests {
             .unwrap();
         assert_eq!(cursor.current.total(), 30);
 
+        let opencode = report
+            .per_client
+            .iter()
+            .find(|c| c.client == Client::OpenCode)
+            .unwrap();
+        assert_eq!(opencode.current.total(), 40);
+
         // Daily series runs day 1..=today and sums to the current-month total.
         assert_eq!(report.daily_current.len(), 15);
-        assert_eq!(report.daily_current.iter().sum::<i64>(), 130);
+        assert_eq!(report.daily_current.iter().sum::<i64>(), 170);
     }
 
     #[test]
@@ -421,6 +439,11 @@ mod tests {
                     current: tb(300_000),
                     last: tb(200_000),
                 },
+                ClientMonths {
+                    client: Client::OpenCode,
+                    current: tb(150_000),
+                    last: tb(100_000),
+                },
             ],
             daily_current: vec![0, 1_000, 500_000, 900_000],
             current_label: "Jun".into(),
@@ -432,6 +455,7 @@ mod tests {
         assert!(s.contains("Claude"));
         assert!(s.contains("Codex"));
         assert!(s.contains("Cursor"));
+        assert!(s.contains("OpenCode"));
         assert!(s.contains("Jun"));
         assert!(s.contains("May"));
         assert!(s.contains("2.4M"));
