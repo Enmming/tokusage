@@ -11,6 +11,35 @@ Want a quick local glance without the backend? `tokusage show` draws a
 month-over-month usage chart straight from your local session files — no
 network, no login.
 
+## Supported sources
+
+tokusage tracks token usage across four AI coding tools:
+
+<table>
+  <tr>
+    <td align="center" width="25%">
+      <img src="docs/assets/icons/claude.svg" width="34" height="34" alt="Claude Code logo"><br>
+      <sub><b>Claude Code</b></sub>
+    </td>
+    <td align="center" width="25%">
+      <img src="docs/assets/icons/codex.svg" width="34" height="34" alt="Codex CLI logo"><br>
+      <sub><b>Codex CLI</b></sub>
+    </td>
+    <td align="center" width="25%">
+      <img src="docs/assets/icons/cursor.svg" width="34" height="34" alt="Cursor IDE logo"><br>
+      <sub><b>Cursor IDE</b></sub>
+    </td>
+    <td align="center" width="25%">
+      <img src="docs/assets/icons/opencode.svg" width="34" height="34" alt="OpenCode logo"><br>
+      <sub><b>OpenCode</b></sub>
+    </td>
+  </tr>
+</table>
+
+See [What it does](#what-it-does) for exactly where each source's data comes
+from. (Logos belong to their respective owners; shown here only to identify the
+tools tokusage integrates with.)
+
 ## What it does
 
 For each AI tool:
