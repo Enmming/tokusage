@@ -10,7 +10,7 @@ from sqlalchemy import select  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
 from app import config, db, main, models, security  # noqa: E402
-from app.services import auth_flow, wecom  # noqa: E402
+from app.services import auth_flow, portal_sessions, portal_users, wecom  # noqa: E402
 
 
 @pytest.fixture
@@ -115,3 +115,70 @@ def test_wecom_build_login_url(monkeypatch):
     assert "open.work.weixin.qq.com/wwopen/sso/qrConnect" in url
     assert "appid=corp" in url
     assert "agentid=100001" in url
+
+
+async def test_login_wecom_user_creates_user_department_and_token(client):
+    profile = {
+        "name": "Alice",
+        "avatar_url": "https://example.com/a.png",
+        "department_path": ["公司", "平台部", "AI 工程"],
+    }
+    async with db.SessionLocal() as session:
+        user = await portal_users.login_wecom_user(
+            session,
+            corp_id="corp",
+            userid="alice",
+            profile=profile,
+        )
+        token = await session.scalar(
+            select(models.UserToken).where(models.UserToken.user_id == user.id)
+        )
+
+    assert user.name == "Alice"
+    assert user.department_path_json == ["公司", "平台部", "AI 工程"]
+    assert user.secondary_department == "平台部"
+    assert token is not None
+    assert token.plain_token.startswith("tk_")
+    assert token.team_id == "平台部"
+    assert token.user_label == "Alice"
+
+
+async def test_login_wecom_user_reuses_existing_active_token(client):
+    async with db.SessionLocal() as session:
+        first = await portal_users.login_wecom_user(
+            session,
+            corp_id="corp",
+            userid="alice",
+            profile={"name": "Alice"},
+        )
+        second = await portal_users.login_wecom_user(
+            session,
+            corp_id="corp",
+            userid="alice",
+            profile={"name": "Alice B"},
+        )
+        tokens = (
+            await session.execute(
+                select(models.UserToken).where(models.UserToken.user_id == first.id)
+            )
+        ).scalars().all()
+
+    assert first.id == second.id
+    assert len(tokens) == 1
+
+
+async def test_create_and_require_portal_session(client):
+    async with db.SessionLocal() as session:
+        user = models.PortalUser(
+            wecom_corp_id="corp",
+            wecom_userid="alice",
+            name="Alice",
+            status="active",
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        signed = await portal_sessions.create_session(session, user)
+        loaded = await portal_sessions.load_user_from_signed_session(session, signed)
+
+    assert loaded.id == user.id
