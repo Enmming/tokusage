@@ -93,15 +93,12 @@ function renderPeriodTitle() {
 
 function renderStats(overview) {
   const cards = [
-    ["最常用模型", overview.most_used_model?.model || "-"],
     ["总 Token 数", formatTokens(overview.total_tokens)],
-    ["连续天数", `${overview.current_streak_days || 0} 天`],
-    ["最长连续天数", `${overview.longest_streak_days || 0} 天`],
+    ["最常用模型", overview.most_used_model?.model || "-"],
     ["活跃天数", `${overview.active_days || 0}/${overview.days_in_year || 365}`],
+    ["连续天数", `${overview.current_streak_days || 0} 天`],
     ["峰值日", overview.peak_day ? overview.peak_day.date : "-", overview.peak_day ? `Tokens: ${formatTokens(overview.peak_day.total_tokens)}` : ""],
-    ["峰值周", overview.peak_week ? `${overview.peak_week.date_from} → ${overview.peak_week.date_to}` : "-", overview.peak_week ? `Tokens: ${formatTokens(overview.peak_week.total_tokens)}` : ""],
     ["活跃日均值", formatTokens(overview.active_day_average_tokens)],
-    ["最高活跃日", overview.highest_active_weekday ? overview.highest_active_weekday.weekday : "-", overview.highest_active_weekday ? `Tokens: ${formatTokens(overview.highest_active_weekday.total_tokens)}` : ""],
   ];
   $("#stats-grid").innerHTML = cards.map(([label, value, note]) => `
     <article class="stat-card">
@@ -116,10 +113,13 @@ function renderMonthSummary(overview) {
   const items = [
     ["总 Token 数", formatTokens(overview.total_tokens)],
     ["事件数", formatTokens(overview.event_count)],
-    ["连续天数", `${overview.current_streak_days || 0} 天`],
-    ["活跃日均值", formatTokens(overview.active_day_average_tokens)],
-    ["最常用模型", overview.most_used_model?.model || "-"],
     ["活跃天数", `${overview.active_days || 0}`],
+    ["连续天数", `${overview.current_streak_days || 0} 天`],
+    ["最长连续", `${overview.longest_streak_days || 0} 天`],
+    ["峰值日", overview.peak_day ? overview.peak_day.date : "-"],
+    ["峰值周", overview.peak_week ? `${overview.peak_week.date_from} → ${overview.peak_week.date_to}` : "-"],
+    ["最高活跃星期", overview.highest_active_weekday ? overview.highest_active_weekday.weekday : "-"],
+    ["最常用模型", overview.most_used_model?.model || "-"],
   ];
   $("#month-summary").innerHTML = items.map(([label, value]) => `
     <div class="mini-stat"><span>${label}</span><strong>${value}</strong></div>
@@ -238,7 +238,7 @@ function renderSummaryTable() {
   const rows = visibleCalendarRows();
   if (!rows.length) {
     $("#summary-table").innerHTML = `
-      <tr><td colspan="6" class="empty-cell">当前周期暂无可显示日期</td></tr>
+      <tr><td colspan="8" class="empty-cell">当前周期暂无可显示日期</td></tr>
     `;
     return;
   }
@@ -251,6 +251,8 @@ function renderSummaryTable() {
         <td>${formatTokens(row.input_tokens)}</td>
         <td>${formatTokens(row.output_tokens)}</td>
         <td>${formatTokens(row.cache_read_tokens)}</td>
+        <td>${formatTokens(row.cache_write_tokens)}</td>
+        <td>${formatTokens(row.reasoning_tokens)}</td>
       </tr>
     `;
   }).join("");

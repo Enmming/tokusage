@@ -58,5 +58,7 @@ async def test_dashboard_page_renders_with_session(client):
         cookies={portal_sessions.SESSION_COOKIE_NAME: cookie},
     )
     assert response.status_code == 200
-    assert "每日活跃" in response.text
+    assert "Token 使用概览" in response.text
+    assert "period-summary-title" in response.text
+    assert "summary-table-title" in response.text
     assert "data-dashboard-root" in response.text
