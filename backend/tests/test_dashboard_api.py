@@ -8,7 +8,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
 from app import db, main, models, security  # noqa: E402
-from app.services import dashboard  # noqa: E402
+from app.services import dashboard, portal_sessions  # noqa: E402
 
 
 @pytest.fixture
@@ -140,6 +140,12 @@ async def seed_dashboard_user(session):
     return user
 
 
+async def seed_dashboard_session() -> str:
+    async with db.SessionLocal() as session:
+        user = await seed_dashboard_user(session)
+        return await portal_sessions.create_session(session, user)
+
+
 async def test_dashboard_overview_calculates_token_metrics(client):
     async with db.SessionLocal() as session:
         user = await seed_dashboard_user(session)
@@ -212,3 +218,46 @@ async def test_dashboard_day_detail_groups_by_source_model_provider(client):
             "reasoning_tokens": 0,
         }
     ]
+
+
+async def test_dashboard_routes_require_session(client):
+    response = await client.get(
+        "/api/dashboard/overview",
+        params={"year": 2026, "month": 6},
+    )
+    assert response.status_code == 401
+
+
+async def test_dashboard_overview_route_returns_current_user_metrics(client):
+    cookie = await seed_dashboard_session()
+    response = await client.get(
+        "/api/dashboard/overview",
+        params={"year": 2026, "month": 6},
+        cookies={portal_sessions.SESSION_COOKIE_NAME: cookie},
+    )
+    assert response.status_code == 200
+    assert response.json()["total_tokens"] == 1000
+
+
+async def test_dashboard_calendar_route_returns_month_rows(client):
+    cookie = await seed_dashboard_session()
+    response = await client.get(
+        "/api/dashboard/calendar",
+        params={"view": "month", "year": 2026, "month": 6},
+        cookies={portal_sessions.SESSION_COOKIE_NAME: cookie},
+    )
+    assert response.status_code == 200
+    rows = response.json()
+    assert len(rows) == 30
+    assert rows[0]["date"] == "2026-06-01"
+
+
+async def test_dashboard_day_detail_route_returns_grouped_rows(client):
+    cookie = await seed_dashboard_session()
+    response = await client.get(
+        "/api/dashboard/day-detail",
+        params={"date": "2026-06-10"},
+        cookies={portal_sessions.SESSION_COOKIE_NAME: cookie},
+    )
+    assert response.status_code == 200
+    assert response.json()["total_tokens"] == 600
