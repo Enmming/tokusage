@@ -441,6 +441,12 @@ function setAccountMenuOpen(open) {
   button.setAttribute("aria-expanded", String(open));
 }
 
+function setCopyTokenStatus(text, variant = "") {
+  const button = $("#copy-token");
+  button.textContent = text;
+  button.dataset.status = variant;
+}
+
 function bindControls() {
   document.querySelectorAll(".segment[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -471,8 +477,25 @@ function bindControls() {
     if (event.key === "Escape") setAccountMenuOpen(false);
   });
   $("#copy-token").addEventListener("click", async () => {
+    const button = $("#copy-token");
     const token = state.profile?.plain_token || "";
-    if (token) await navigator.clipboard.writeText(token);
+    if (!token) {
+      setCopyTokenStatus("无 token", "error");
+      setTimeout(() => setCopyTokenStatus("复制 token"), 2000);
+      return;
+    }
+    button.disabled = true;
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopyTokenStatus("已复制", "success");
+    } catch {
+      setCopyTokenStatus("复制失败", "error");
+    } finally {
+      setTimeout(() => {
+        button.disabled = false;
+        setCopyTokenStatus("复制 token");
+      }, 2000);
+    }
   });
   $("#logout").addEventListener("click", async () => {
     await fetch("/api/logout", { method: "POST" });

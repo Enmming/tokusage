@@ -126,6 +126,18 @@ td {
   font-weight: 700;
 }
 
+.secondary-button[data-status="success"] {
+  background: #ecfdf3;
+  border-color: #8ad6a8;
+  color: #067647;
+}
+
+.secondary-button[data-status="error"] {
+  background: #fff1f1;
+  border-color: #f3a8a8;
+  color: #b42318;
+}
+
 .link-button {
   background: transparent;
   border-color: transparent;
