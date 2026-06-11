@@ -196,12 +196,37 @@ function tickIndexes(length) {
   return indexes;
 }
 
+function compactTokens(value) {
+  const rounded = Math.round(value || 0);
+  if (rounded >= 1_000_000_000) return `${(rounded / 1_000_000_000).toFixed(1)}B`;
+  if (rounded >= 1_000_000) return `${(rounded / 1_000_000).toFixed(1)}M`;
+  if (rounded >= 1_000) return `${(rounded / 1_000).toFixed(1)}K`;
+  return String(rounded);
+}
+
+function smoothPath(points) {
+  if (points.length === 1) return `M${points[0].x},${points[0].y}`;
+  return points.map((point, index) => {
+    if (index === 0) return `M${point.x},${point.y}`;
+    const previous = points[index - 1];
+    const controlOffset = (point.x - previous.x) * 0.45;
+    return `C${previous.x + controlOffset},${previous.y} ${point.x - controlOffset},${point.y} ${point.x},${point.y}`;
+  }).join(" ");
+}
+
+function isSelectedChartPoint(point) {
+  if (!state.selectedDate) return false;
+  if (state.view === "month") return point.row.date === state.selectedDate;
+  return point.row.date.slice(0, 7) === state.selectedDate.slice(0, 7);
+}
+
 function renderLineChart() {
-  const width = 800;
-  const height = 190;
-  const plotTop = 10;
-  const plotBottom = 146;
-  const labelY = 176;
+  const width = 900;
+  const height = 240;
+  const paddingX = 38;
+  const plotTop = 28;
+  const plotBottom = 178;
+  const labelY = 218;
   const rows = chartRows();
   if (!rows.length) {
     $("#line-chart").innerHTML = `<div class="empty-state">当前周期暂无可显示日期</div>`;
@@ -209,15 +234,39 @@ function renderLineChart() {
   }
   const max = Math.max(...rows.map((item) => item.total_tokens || 0), 1);
   const points = rows.map((row, index) => {
-    const x = rows.length === 1 ? width / 2 : (index / (rows.length - 1)) * width;
+    const x = rows.length === 1 ? width / 2 : paddingX + (index / (rows.length - 1)) * (width - paddingX * 2);
     const y = plotBottom - ((row.total_tokens || 0) / max) * (plotBottom - plotTop);
     return { x, y, row };
   });
-  const path = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`).join(" ");
+  const path = smoothPath(points);
+  const areaPath = `${path} L${points[points.length - 1].x},${plotBottom} L${points[0].x},${plotBottom} Z`;
   const ticks = tickIndexes(points.length);
+  const peak = points.reduce((current, point) => (
+    point.row.total_tokens > current.row.total_tokens ? point : current
+  ), points[0]);
   $("#line-chart").innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
-      <line x1="0" y1="${plotBottom}" x2="${width}" y2="${plotBottom}" class="chart-axis"></line>
+    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="trend-fill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#0f9f9a" stop-opacity="0.26"></stop>
+          <stop offset="74%" stop-color="#4f7ff4" stop-opacity="0.08"></stop>
+          <stop offset="100%" stop-color="#4f7ff4" stop-opacity="0"></stop>
+        </linearGradient>
+        <linearGradient id="trend-stroke" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0%" stop-color="#2448d8"></stop>
+          <stop offset="58%" stop-color="#0f9f9a"></stop>
+          <stop offset="100%" stop-color="#172a8a"></stop>
+        </linearGradient>
+      </defs>
+      ${[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+        const y = plotBottom - ratio * (plotBottom - plotTop);
+        return `
+          <line x1="${paddingX}" y1="${y}" x2="${width - paddingX}" y2="${y}" class="chart-grid"></line>
+          <text x="8" y="${y + 4}" class="chart-y-label">${compactTokens(max * ratio)}</text>
+        `;
+      }).join("")}
+      <path d="${areaPath}" class="chart-area"></path>
+      <path d="${path}" class="chart-line"></path>
       ${ticks.map((index) => {
         const point = points[index];
         return `
@@ -225,8 +274,21 @@ function renderLineChart() {
           <text x="${point.x}" y="${labelY}" text-anchor="middle" class="chart-label">${point.row.label}</text>
         `;
       }).join("")}
-      <path d="${path}" fill="none" stroke="#0f9f9a" stroke-width="4" vector-effect="non-scaling-stroke"></path>
-      ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="5" fill="#2448d8" data-date="${point.row.date}"><title>${point.row.label}: ${formatTokens(point.row.total_tokens)}</title></circle>`).join("")}
+      <g class="chart-points">
+        ${points.map((point) => `
+          <circle
+            class="chart-point${isSelectedChartPoint(point) ? " selected" : ""}${point === peak ? " peak" : ""}"
+            cx="${point.x}"
+            cy="${point.y}"
+            r="${point === peak || isSelectedChartPoint(point) ? 6 : 4}"
+            data-date="${point.row.date}"
+          ><title>${point.row.label}: ${formatTokens(point.row.total_tokens)}</title></circle>
+        `).join("")}
+      </g>
+      <g class="chart-peak-label" transform="translate(${Math.min(width - 132, Math.max(58, peak.x - 54))}, ${Math.max(18, peak.y - 34)})">
+        <rect width="108" height="24" rx="6"></rect>
+        <text x="54" y="16" text-anchor="middle">峰值 ${compactTokens(peak.row.total_tokens)}</text>
+      </g>
     </svg>
   `;
   document.querySelectorAll("#line-chart circle").forEach((point) => {
@@ -273,6 +335,7 @@ function clearDayDetail() {
 async function selectDate(date) {
   state.selectedDate = date;
   renderHeatmap();
+  renderLineChart();
   const detail = await fetchJson(`/api/dashboard/day-detail?date=${encodeURIComponent(date)}`);
   if (!detail) return;
   $("#day-title").textContent = `${detail.date} 日详情`;
