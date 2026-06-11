@@ -15,7 +15,7 @@ from ..services import portal_sessions
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
-templates.env.globals["static_version"] = "20260611-heatmap-tooltip"
+templates.env.globals["static_version"] = "20260611-remove-heatmap-legend"
 router = APIRouter()
 
 

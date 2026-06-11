@@ -144,7 +144,6 @@ function levelFor(row, rows) {
 
 function renderHeatmap() {
   const rows = visibleCalendarRows();
-  $("#legend-scale").innerHTML = Array.from({ length: 6 }, () => "<span></span>").join("");
   if (!rows.length) {
     $("#heatmap").innerHTML = `<div class="empty-state">当前周期暂无可显示日期</div>`;
     return;
