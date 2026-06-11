@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from .config import settings
 from .db import init_schema
+from .routers import auth as portal_auth
 from .routes import router
 
 
@@ -36,3 +37,4 @@ async def limit_request_size(request: Request, call_next):
 
 
 app.include_router(router)
+app.include_router(portal_auth.router)
