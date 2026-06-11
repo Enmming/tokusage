@@ -418,6 +418,14 @@ td {
   margin: 0 0 10px;
 }
 
+.period-models {
+  margin-top: 18px;
+}
+
+.period-models h3 {
+  margin: 0 0 10px;
+}
+
 .chart-grid,
 .chart-tick {
   stroke: #dbe5f1;
@@ -553,6 +561,10 @@ td {
 
 .day-detail {
   margin-top: 0;
+}
+
+.day-heatmap {
+  margin-bottom: 16px;
 }
 
 .breakdown-grid {

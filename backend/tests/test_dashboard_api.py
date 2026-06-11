@@ -231,6 +231,38 @@ async def test_dashboard_day_detail_groups_by_source_model_provider(client):
     ]
 
 
+async def test_dashboard_period_models_groups_current_range(client):
+    async with db.SessionLocal() as session:
+        user = await seed_dashboard_user(session)
+        models_by_period = await dashboard.fetch_period_models(
+            session,
+            user,
+            year=2026,
+            month=6,
+        )
+
+    assert models_by_period == [
+        {
+            "source": "claude",
+            "model": "claude-opus-4.7",
+            "provider": "anthropic",
+            "total_tokens": 600,
+        },
+        {
+            "source": "codex",
+            "model": "gpt-5",
+            "provider": "openai",
+            "total_tokens": 300,
+        },
+        {
+            "source": "claude",
+            "model": "claude-sonnet-4.6",
+            "provider": "anthropic",
+            "total_tokens": 100,
+        },
+    ]
+
+
 async def test_dashboard_routes_require_session(client):
     response = await client.get(
         "/api/dashboard/overview",
@@ -272,3 +304,19 @@ async def test_dashboard_day_detail_route_returns_grouped_rows(client):
     )
     assert response.status_code == 200
     assert response.json()["total_tokens"] == 600
+
+
+async def test_dashboard_period_models_route_returns_grouped_rows(client):
+    cookie = await seed_dashboard_session()
+    response = await client.get(
+        "/api/dashboard/period-models",
+        params={"year": 2026, "month": 6},
+        cookies={portal_sessions.SESSION_COOKIE_NAME: cookie},
+    )
+    assert response.status_code == 200
+    assert response.json()[0] == {
+        "source": "claude",
+        "model": "claude-opus-4.7",
+        "provider": "anthropic",
+        "total_tokens": 600,
+    }

@@ -47,12 +47,27 @@
               <h3 id="line-chart-title">日曲线</h3>
               <div class="line-chart" id="line-chart"></div>
             </div>
-            <div class="legend"><span>少</span><div id="legend-scale"></div><span>多</span></div>
-            <div class="heatmap" id="heatmap"></div>
+            <section class="period-models">
+              <h3 id="period-models-title">当前范围模型统计</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>来源</th>
+                    <th>模型</th>
+                    <th>总 Token 数 (M)</th>
+                  </tr>
+                </thead>
+                <tbody id="period-models"></tbody>
+              </table>
+            </section>
           </section>
 
           <section class="panel day-detail">
             <h2 id="day-title">日详情</h2>
+            <div class="day-heatmap">
+              <div class="legend"><span>少</span><div id="legend-scale"></div><span>多</span></div>
+              <div class="heatmap" id="heatmap"></div>
+            </div>
             <div id="day-breakdown"></div>
             <table>
               <thead>

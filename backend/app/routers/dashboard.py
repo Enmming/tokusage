@@ -63,3 +63,18 @@ async def day_detail(
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     return await dashboard.fetch_day_detail(session, user, day=date)
+
+
+@router.get("/period-models")
+async def period_models(
+    year: int = Query(...),
+    month: int | None = Query(default=None, ge=1, le=12),
+    user: PortalUser = Depends(require_portal_user),
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    return await dashboard.fetch_period_models(
+        session,
+        user,
+        year=year,
+        month=month,
+    )

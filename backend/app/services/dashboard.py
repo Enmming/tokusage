@@ -268,6 +268,46 @@ async def fetch_day_detail(
     }
 
 
+async def fetch_period_models(
+    session: AsyncSession,
+    user: PortalUser,
+    *,
+    year: int,
+    month: int | None = None,
+) -> list[dict[str, Any]]:
+    if month is None:
+        date_from = dt.date(year, 1, 1)
+        date_to = dt.date(year, 12, 31)
+    else:
+        date_from = dt.date(year, month, 1)
+        date_to = dt.date(year, month, calendar.monthrange(year, month)[1])
+
+    total_tokens = sum(func.coalesce(func.sum(column), 0) for column in TOKEN_COLUMNS)
+    stmt = (
+        select(
+            RawUsageEvent.source,
+            RawUsageEvent.model,
+            RawUsageEvent.provider,
+            total_tokens.label("total_tokens"),
+        )
+        .join(UserToken, UserToken.id == RawUsageEvent.user_token_id)
+        .where(UserToken.user_id == user.id)
+        .where(func.date(RawUsageEvent.event_ts) >= date_from.isoformat())
+        .where(func.date(RawUsageEvent.event_ts) <= date_to.isoformat())
+        .group_by(RawUsageEvent.source, RawUsageEvent.model, RawUsageEvent.provider)
+        .order_by(total_tokens.desc(), RawUsageEvent.source, RawUsageEvent.model)
+    )
+    return [
+        {
+            "source": row["source"],
+            "model": row["model"],
+            "provider": row["provider"],
+            "total_tokens": _as_int(row["total_tokens"]),
+        }
+        for row in (await session.execute(stmt)).mappings().all()
+    ]
+
+
 async def _most_used_model(
     session: AsyncSession,
     user: PortalUser,

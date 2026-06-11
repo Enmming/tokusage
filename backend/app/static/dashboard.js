@@ -74,6 +74,7 @@ async function loadDashboard() {
   renderMonthSummary(overview);
   renderHeatmap();
   renderLineChart();
+  await renderPeriodModels();
   renderSummaryTable();
   const visibleRows = visibleCalendarRows();
   const selectedIsVisible = visibleRows.some((row) => row.date === state.selectedDate);
@@ -94,6 +95,8 @@ function renderPeriodTitle() {
     state.view === "month" ? "月度统计" : "年度统计";
   $("#line-chart-title").textContent =
     state.view === "month" ? "日曲线" : "月曲线";
+  $("#period-models-title").textContent =
+    state.view === "month" ? "本月模型统计" : "本年模型统计";
   $("#summary-table-title").textContent = "每日汇总";
 }
 
@@ -329,6 +332,20 @@ function renderLineChart() {
       selectDate(peakLabel.dataset.date);
     }
   });
+}
+
+async function renderPeriodModels() {
+  const models = await fetchJson(`/api/dashboard/period-models?${periodParams().toString()}`);
+  if (!models) return;
+  $("#period-models").innerHTML = models.length
+    ? models.map((row) => `
+      <tr>
+        <td>${row.source}</td>
+        <td>${row.model}</td>
+        <td>${formatTokens(row.total_tokens)}</td>
+      </tr>
+    `).join("")
+    : `<tr><td colspan="3" class="empty-cell">当前范围暂无模型数据</td></tr>`;
 }
 
 function showChartTooltip(point) {
