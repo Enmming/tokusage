@@ -215,6 +215,13 @@ function shiftPeriod(delta) {
   loadDashboard();
 }
 
+function setAccountMenuOpen(open) {
+  const menu = $("#account-menu");
+  const button = $("#avatar-button");
+  menu.hidden = !open;
+  button.setAttribute("aria-expanded", String(open));
+}
+
 function bindControls() {
   document.querySelectorAll(".segment[data-view]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -228,9 +235,21 @@ function bindControls() {
   });
   $("#previous-period").addEventListener("click", () => shiftPeriod(-1));
   $("#next-period").addEventListener("click", () => shiftPeriod(1));
-  $("#avatar-button").addEventListener("click", () => {
+  $("#avatar-button").setAttribute("aria-controls", "account-menu");
+  $("#avatar-button").setAttribute("aria-expanded", "false");
+  $("#avatar-button").addEventListener("click", (event) => {
+    event.stopPropagation();
     const menu = $("#account-menu");
-    menu.hidden = !menu.hidden;
+    setAccountMenuOpen(menu.hidden);
+  });
+  $("#account-menu").addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
+  document.addEventListener("click", () => {
+    setAccountMenuOpen(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") setAccountMenuOpen(false);
   });
   $("#copy-token").addEventListener("click", async () => {
     const token = state.profile?.plain_token || "";

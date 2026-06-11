@@ -225,6 +225,10 @@ td {
   box-shadow: var(--shadow);
 }
 
+.account-menu[hidden] {
+  display: none;
+}
+
 .token-box {
   overflow-wrap: anywhere;
   border: 1px solid #c7d2fe;
