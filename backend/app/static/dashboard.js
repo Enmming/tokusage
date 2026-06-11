@@ -17,6 +17,18 @@ function formatTokens(value) {
   return fmt.format(Math.round(value || 0));
 }
 
+function localDateIso(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function visibleCalendarRows() {
+  const today = localDateIso();
+  return state.calendar.filter((row) => row.date <= today);
+}
+
 function periodParams() {
   const params = new URLSearchParams({ year: String(state.year) });
   if (state.view === "month") params.set("month", String(state.month));
@@ -56,14 +68,27 @@ async function loadDashboard() {
   renderMonthSummary(overview);
   renderHeatmap();
   renderLineChart();
-  renderMonthTable();
-  const selected = state.selectedDate || latestActiveDate() || state.calendar[0]?.date;
-  if (selected) await selectDate(selected);
+  renderSummaryTable();
+  const visibleRows = visibleCalendarRows();
+  const selectedIsVisible = visibleRows.some((row) => row.date === state.selectedDate);
+  const selected = selectedIsVisible
+    ? state.selectedDate
+    : latestActiveDate(visibleRows) || visibleRows[0]?.date;
+  if (selected) {
+    await selectDate(selected);
+  } else {
+    clearDayDetail();
+  }
 }
 
 function renderPeriodTitle() {
   $("#period-title").textContent =
     state.view === "month" ? `${state.year}年${state.month}月` : `${state.year}`;
+  $("#period-summary-title").textContent =
+    state.view === "month" ? "月度统计" : "年度统计";
+  $("#line-chart-title").textContent =
+    state.view === "month" ? "日曲线" : "月曲线";
+  $("#summary-table-title").textContent = "每日汇总";
 }
 
 function renderStats(overview) {
@@ -101,20 +126,25 @@ function renderMonthSummary(overview) {
   `).join("");
 }
 
-function levelFor(row) {
-  const max = Math.max(...state.calendar.map((item) => item.total_tokens || 0), 0);
+function levelFor(row, rows) {
+  const max = Math.max(...rows.map((item) => item.total_tokens || 0), 0);
   if (!row.total_tokens || !max) return 0;
   return Math.max(1, Math.ceil((row.total_tokens / max) * 5));
 }
 
 function renderHeatmap() {
+  const rows = visibleCalendarRows();
   $("#legend-scale").innerHTML = Array.from({ length: 6 }, () => "<span></span>").join("");
-  $("#heatmap").innerHTML = state.calendar.map((row) => `
+  if (!rows.length) {
+    $("#heatmap").innerHTML = `<div class="empty-state">当前周期暂无可显示日期</div>`;
+    return;
+  }
+  $("#heatmap").innerHTML = rows.map((row) => `
     <button
       type="button"
       class="heat-cell${row.date === state.selectedDate ? " selected" : ""}"
       data-date="${row.date}"
-      data-level="${levelFor(row)}"
+      data-level="${levelFor(row, rows)}"
       title="${row.date}: ${formatTokens(row.total_tokens)}"
       aria-label="${row.date} ${formatTokens(row.total_tokens)} Tokens"
     ></button>
@@ -124,20 +154,79 @@ function renderHeatmap() {
   });
 }
 
+function chartRows() {
+  const rows = visibleCalendarRows();
+  if (state.view === "month") {
+    return rows.map((row) => ({
+      date: row.date,
+      label: String(Number(row.date.slice(8, 10))),
+      total_tokens: row.total_tokens || 0,
+    }));
+  }
+
+  const byMonth = new Map();
+  for (const row of rows) {
+    const month = Number(row.date.slice(5, 7));
+    const current = byMonth.get(month) || {
+      month,
+      date: row.date,
+      label: `${month}月`,
+      total_tokens: 0,
+      activeDate: null,
+    };
+    current.total_tokens += row.total_tokens || 0;
+    current.date = row.date;
+    if (row.total_tokens > 0) current.activeDate = row.date;
+    byMonth.set(month, current);
+  }
+  return Array.from(byMonth.values()).map((row) => ({
+    date: row.activeDate || row.date,
+    label: row.label,
+    total_tokens: row.total_tokens,
+  }));
+}
+
+function tickIndexes(length) {
+  if (length <= 1) return [0];
+  const maxTicks = state.view === "year" ? 12 : 7;
+  const step = Math.max(1, Math.ceil(length / maxTicks));
+  const indexes = [];
+  for (let index = 0; index < length; index += step) indexes.push(index);
+  if (indexes[indexes.length - 1] !== length - 1) indexes.push(length - 1);
+  return indexes;
+}
+
 function renderLineChart() {
   const width = 800;
-  const height = 150;
-  const max = Math.max(...state.calendar.map((item) => item.total_tokens || 0), 1);
-  const points = state.calendar.map((row, index) => {
-    const x = state.calendar.length === 1 ? 0 : (index / (state.calendar.length - 1)) * width;
-    const y = height - ((row.total_tokens || 0) / max) * (height - 16) - 8;
+  const height = 190;
+  const plotTop = 10;
+  const plotBottom = 146;
+  const labelY = 176;
+  const rows = chartRows();
+  if (!rows.length) {
+    $("#line-chart").innerHTML = `<div class="empty-state">当前周期暂无可显示日期</div>`;
+    return;
+  }
+  const max = Math.max(...rows.map((item) => item.total_tokens || 0), 1);
+  const points = rows.map((row, index) => {
+    const x = rows.length === 1 ? width / 2 : (index / (rows.length - 1)) * width;
+    const y = plotBottom - ((row.total_tokens || 0) / max) * (plotBottom - plotTop);
     return { x, y, row };
   });
   const path = points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x},${point.y}`).join(" ");
+  const ticks = tickIndexes(points.length);
   $("#line-chart").innerHTML = `
     <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+      <line x1="0" y1="${plotBottom}" x2="${width}" y2="${plotBottom}" class="chart-axis"></line>
+      ${ticks.map((index) => {
+        const point = points[index];
+        return `
+          <line x1="${point.x}" y1="${plotBottom}" x2="${point.x}" y2="${plotBottom + 5}" class="chart-tick"></line>
+          <text x="${point.x}" y="${labelY}" text-anchor="middle" class="chart-label">${point.row.label}</text>
+        `;
+      }).join("")}
       <path d="${path}" fill="none" stroke="#0f9f9a" stroke-width="4" vector-effect="non-scaling-stroke"></path>
-      ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="5" fill="#2448d8" data-date="${point.row.date}"></circle>`).join("")}
+      ${points.map((point) => `<circle cx="${point.x}" cy="${point.y}" r="5" fill="#2448d8" data-date="${point.row.date}"><title>${point.row.label}: ${formatTokens(point.row.total_tokens)}</title></circle>`).join("")}
     </svg>
   `;
   document.querySelectorAll("#line-chart circle").forEach((point) => {
@@ -145,30 +234,38 @@ function renderLineChart() {
   });
 }
 
-function renderMonthTable() {
-  if (state.view !== "year") {
-    $("#month-table").innerHTML = "";
+function renderSummaryTable() {
+  const rows = visibleCalendarRows();
+  if (!rows.length) {
+    $("#summary-table").innerHTML = `
+      <tr><td colspan="6" class="empty-cell">当前周期暂无可显示日期</td></tr>
+    `;
     return;
   }
-  const byMonth = new Map();
-  for (const row of state.calendar) {
-    const month = Number(row.date.slice(5, 7));
-    const current = byMonth.get(month) || { total: 0, events: 0, active: 0 };
-    current.total += row.total_tokens || 0;
-    current.events += row.event_count || 0;
-    if (row.total_tokens > 0) current.active += 1;
-    byMonth.set(month, current);
-  }
-  $("#month-table").innerHTML = Array.from({ length: 12 }, (_, index) => {
-    const month = index + 1;
-    const row = byMonth.get(month) || { total: 0, events: 0, active: 0 };
-    return `<tr><td>${month}月</td><td>${formatTokens(row.total)}</td><td>${formatTokens(row.events)}</td><td>${row.active}</td><td>-</td></tr>`;
+  $("#summary-table").innerHTML = rows.map((row) => {
+    return `
+      <tr>
+        <td>${row.date}</td>
+        <td>${formatTokens(row.total_tokens)}</td>
+        <td>${formatTokens(row.event_count)}</td>
+        <td>${formatTokens(row.input_tokens)}</td>
+        <td>${formatTokens(row.output_tokens)}</td>
+        <td>${formatTokens(row.cache_read_tokens)}</td>
+      </tr>
+    `;
   }).join("");
 }
 
-function latestActiveDate() {
-  const active = state.calendar.filter((row) => row.total_tokens > 0);
+function latestActiveDate(rows = visibleCalendarRows()) {
+  const active = rows.filter((row) => row.total_tokens > 0);
   return active.length ? active[active.length - 1].date : null;
+}
+
+function clearDayDetail() {
+  state.selectedDate = null;
+  $("#day-title").textContent = "日详情";
+  $("#day-breakdown").innerHTML = `<div class="empty-state">选择日期后查看详情</div>`;
+  $("#day-models").innerHTML = "";
 }
 
 async function selectDate(date) {
