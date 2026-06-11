@@ -465,10 +465,22 @@ td {
   opacity: 0.92;
 }
 
+.chart-peak-label {
+  cursor: pointer;
+  outline: none;
+}
+
+.chart-peak-label:hover rect,
+.chart-peak-label:focus rect {
+  fill: #2448d8;
+  opacity: 1;
+}
+
 .chart-peak-label text {
   fill: #ffffff;
   font-size: 12px;
   font-weight: 900;
+  pointer-events: none;
 }
 
 .chart-tooltip {

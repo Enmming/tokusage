@@ -299,7 +299,14 @@ function renderLineChart() {
           ><title>${point.row.label}: ${formatTokens(point.row.total_tokens)}</title></circle>
         `).join("")}
       </g>
-      <g class="chart-peak-label" transform="translate(${Math.min(width - 132, Math.max(58, peak.x - 54))}, ${Math.max(18, peak.y - 34)})">
+      <g
+        class="chart-peak-label"
+        transform="translate(${Math.min(width - 132, Math.max(58, peak.x - 54))}, ${Math.max(18, peak.y - 34)})"
+        data-date="${peak.row.date}"
+        tabindex="0"
+        role="button"
+        aria-label="选择峰值日期 ${peak.row.date}"
+      >
         <rect width="108" height="24" rx="6"></rect>
         <text x="54" y="16" text-anchor="middle">峰值 ${compactTokens(peak.row.total_tokens)}</text>
       </g>
@@ -312,6 +319,14 @@ function renderLineChart() {
     point.addEventListener("mouseleave", hideChartTooltip);
     point.addEventListener("focus", () => showChartTooltip(point));
     point.addEventListener("blur", hideChartTooltip);
+  });
+  const peakLabel = $("#line-chart .chart-peak-label");
+  peakLabel?.addEventListener("click", () => selectDate(peakLabel.dataset.date));
+  peakLabel?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectDate(peakLabel.dataset.date);
+    }
   });
 }
 
