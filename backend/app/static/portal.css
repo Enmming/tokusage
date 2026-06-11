@@ -353,6 +353,7 @@ td {
 }
 
 .heatmap {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(24px, 1fr));
   gap: 6px;
@@ -503,7 +504,8 @@ td {
   pointer-events: none;
 }
 
-.chart-tooltip {
+.chart-tooltip,
+.heatmap-tooltip {
   position: absolute;
   z-index: 2;
   min-width: 120px;

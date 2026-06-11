@@ -155,12 +155,19 @@ function renderHeatmap() {
       class="heat-cell${row.date === state.selectedDate ? " selected" : ""}"
       data-date="${row.date}"
       data-level="${levelFor(row, rows)}"
+      data-tooltip-date="${row.date}"
+      data-tooltip-tokens="${formatTokens(row.total_tokens)}"
       title="${row.date}: ${formatTokens(row.total_tokens)}"
       aria-label="${row.date} ${formatTokens(row.total_tokens)} Tokens"
     ></button>
   `).join("");
   document.querySelectorAll(".heat-cell").forEach((cell) => {
     cell.addEventListener("click", () => selectDate(cell.dataset.date));
+    cell.addEventListener("mouseenter", () => showHeatmapTooltip(cell));
+    cell.addEventListener("mousemove", () => showHeatmapTooltip(cell));
+    cell.addEventListener("mouseleave", hideHeatmapTooltip);
+    cell.addEventListener("focus", () => showHeatmapTooltip(cell));
+    cell.addEventListener("blur", hideHeatmapTooltip);
   });
 }
 
@@ -368,6 +375,25 @@ function showChartTooltip(point) {
 
 function hideChartTooltip() {
   $("#line-chart").querySelector(".chart-tooltip")?.remove();
+}
+
+function showHeatmapTooltip(cell) {
+  const container = $("#heatmap");
+  const tooltip = container.querySelector(".heatmap-tooltip") || document.createElement("div");
+  const containerBox = container.getBoundingClientRect();
+  const cellBox = cell.getBoundingClientRect();
+  const x = cellBox.left - containerBox.left + cellBox.width / 2;
+  const y = cellBox.top - containerBox.top;
+
+  tooltip.className = "heatmap-tooltip";
+  tooltip.innerHTML = chartTooltip(cell.dataset.tooltipDate || "", cell.dataset.tooltipTokens || "0");
+  tooltip.style.left = `${Math.min(containerBox.width - 120, Math.max(8, x - 60))}px`;
+  tooltip.style.top = `${Math.max(8, y - 58)}px`;
+  if (!tooltip.parentElement) container.appendChild(tooltip);
+}
+
+function hideHeatmapTooltip() {
+  $("#heatmap").querySelector(".heatmap-tooltip")?.remove();
 }
 
 function renderSummaryTable() {
