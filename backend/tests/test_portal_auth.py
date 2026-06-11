@@ -4,11 +4,13 @@ import os
 os.environ["TOKUSAGE_DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 
 import pytest  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: E402
 
-from app import db, main, models, security  # noqa: E402
+from app import config, db, main, models, security  # noqa: E402
+from app.services import auth_flow, wecom  # noqa: E402
 
 
 @pytest.fixture
@@ -74,3 +76,42 @@ def test_generate_token_and_hint_are_stable_shape():
     token = security.generate_api_token()
     assert token.startswith("tk_")
     assert security.token_hint("tk_abcdefghijklmnopqrstuvwxyz").startswith("tk_")
+
+
+async def test_create_and_consume_state_once(client):
+    async with db.SessionLocal() as session:
+        state = await auth_flow.create_state(
+            session,
+            provider="wecom",
+            entry="qr",
+            return_to="/dashboard",
+        )
+        row = await auth_flow.consume_state(session, state)
+        assert row.provider == "wecom"
+        assert row.return_to == "/dashboard"
+        with pytest.raises(HTTPException):
+            await auth_flow.consume_state(session, state)
+
+
+def test_normalize_return_to_rejects_unsafe_paths():
+    assert auth_flow.normalize_return_to(None) == "/dashboard"
+    assert auth_flow.normalize_return_to("/dashboard?view=year") == "/dashboard?view=year"
+    with pytest.raises(HTTPException):
+        auth_flow.normalize_return_to("https://evil.example")
+    with pytest.raises(HTTPException):
+        auth_flow.normalize_return_to("/api/auth/wecom/callback")
+
+
+def test_wecom_build_login_url(monkeypatch):
+    monkeypatch.setattr(config.settings, "wecom_corp_id", "corp")
+    monkeypatch.setattr(config.settings, "wecom_agent_id", "100001")
+    monkeypatch.setattr(config.settings, "wecom_corp_secret", "secret")
+    monkeypatch.setattr(
+        config.settings,
+        "wecom_redirect_uri",
+        "https://tokusage.example/api/auth/wecom/callback",
+    )
+    url = wecom.WeComClient().build_login_url(entry="qr", state="state1")
+    assert "open.work.weixin.qq.com/wwopen/sso/qrConnect" in url
+    assert "appid=corp" in url
+    assert "agentid=100001" in url
