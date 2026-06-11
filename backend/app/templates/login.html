@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tokusage 登录</title>
+    <link rel="stylesheet" href="/static/portal.css" />
+  </head>
+  <body class="login-body">
+    <main class="login-shell">
+      <section class="login-panel">
+        <div class="brand-mark">tokusage</div>
+        <h1>企业微信登录</h1>
+        <p id="login-status" class="muted">登录后查看你的 Token 用量和个人 API token。</p>
+        <button id="wecom-login" class="primary-button" type="button">企业微信登录</button>
+      </section>
+    </main>
+    <script>
+      const button = document.querySelector("#wecom-login");
+      const statusText = document.querySelector("#login-status");
+      function detectEntry() {
+        return /wxwork/i.test(navigator.userAgent) ? "oauth" : "qr";
+      }
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        statusText.textContent = "正在跳转...";
+        try {
+          const params = new URLSearchParams({ entry: detectEntry(), return_to: "/dashboard" });
+          const response = await fetch(`/api/auth/wecom/login-url?${params.toString()}`);
+          if (!response.ok) throw new Error("login-url failed");
+          const body = await response.json();
+          window.location.assign(body.url);
+        } catch {
+          statusText.textContent = "登录入口暂不可用";
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
