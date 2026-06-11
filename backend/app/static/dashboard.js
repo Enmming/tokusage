@@ -14,6 +14,12 @@ function $(selector) {
 }
 
 function formatTokens(value) {
+  const millions = (value || 0) / 1_000_000;
+  const fractionDigits = millions >= 10 ? 1 : 3;
+  return `${fmt.format(Number(millions.toFixed(fractionDigits)))}M`;
+}
+
+function formatCount(value) {
   return fmt.format(Math.round(value || 0));
 }
 
@@ -93,12 +99,12 @@ function renderPeriodTitle() {
 
 function renderStats(overview) {
   const cards = [
-    ["总 Token 数", formatTokens(overview.total_tokens)],
+    ["总 Token 数 (M)", formatTokens(overview.total_tokens)],
     ["最常用模型", overview.most_used_model?.model || "-"],
     ["活跃天数", `${overview.active_days || 0}/${overview.days_in_year || 365}`],
     ["连续天数", `${overview.current_streak_days || 0} 天`],
     ["峰值日", overview.peak_day ? overview.peak_day.date : "-", overview.peak_day ? `Tokens: ${formatTokens(overview.peak_day.total_tokens)}` : ""],
-    ["活跃日均值", formatTokens(overview.active_day_average_tokens)],
+    ["活跃日均值 (M)", formatTokens(overview.active_day_average_tokens)],
   ];
   $("#stats-grid").innerHTML = cards.map(([label, value, note]) => `
     <article class="stat-card">
@@ -111,8 +117,8 @@ function renderStats(overview) {
 
 function renderMonthSummary(overview) {
   const items = [
-    ["总 Token 数", formatTokens(overview.total_tokens)],
-    ["事件数", formatTokens(overview.event_count)],
+    ["总 Token 数 (M)", formatTokens(overview.total_tokens)],
+    ["事件数", formatCount(overview.event_count)],
     ["活跃天数", `${overview.active_days || 0}`],
     ["连续天数", `${overview.current_streak_days || 0} 天`],
     ["最长连续", `${overview.longest_streak_days || 0} 天`],
@@ -197,11 +203,7 @@ function tickIndexes(length) {
 }
 
 function compactTokens(value) {
-  const rounded = Math.round(value || 0);
-  if (rounded >= 1_000_000_000) return `${(rounded / 1_000_000_000).toFixed(1)}B`;
-  if (rounded >= 1_000_000) return `${(rounded / 1_000_000).toFixed(1)}M`;
-  if (rounded >= 1_000) return `${(rounded / 1_000).toFixed(1)}K`;
-  return String(rounded);
+  return formatTokens(value);
 }
 
 function smoothPath(points) {
@@ -348,7 +350,7 @@ function renderSummaryTable() {
       <tr>
         <td>${row.date}</td>
         <td>${formatTokens(row.total_tokens)}</td>
-        <td>${formatTokens(row.event_count)}</td>
+        <td>${formatCount(row.event_count)}</td>
         <td>${formatTokens(row.input_tokens)}</td>
         <td>${formatTokens(row.output_tokens)}</td>
         <td>${formatTokens(row.cache_read_tokens)}</td>
@@ -381,7 +383,7 @@ async function selectDate(date) {
   const b = detail.breakdown;
   $("#day-breakdown").innerHTML = `
     <div class="breakdown-grid">
-      <div class="mini-stat"><span>Tokens</span><strong>${formatTokens(detail.total_tokens)}</strong></div>
+      <div class="mini-stat"><span>Tokens (M)</span><strong>${formatTokens(detail.total_tokens)}</strong></div>
       <div class="mini-stat"><span>输入</span><strong>${formatTokens(b.input_tokens)}</strong></div>
       <div class="mini-stat"><span>输出</span><strong>${formatTokens(b.output_tokens)}</strong></div>
       <div class="mini-stat"><span>缓存读取</span><strong>${formatTokens(b.cache_read_tokens)}</strong></div>

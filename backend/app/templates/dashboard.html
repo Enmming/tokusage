@@ -18,7 +18,7 @@
             <button class="segment active" type="button" data-view="month">月</button>
             <button class="segment" type="button" data-view="year">年</button>
           </div>
-          <div class="metric-pill">Tokens</div>
+          <div class="metric-pill">Tokens (M)</div>
           <div class="account">
             <button class="avatar-button" type="button" id="avatar-button">{{ user_name[:1] }}</button>
             <div class="account-menu" id="account-menu" hidden>
@@ -59,7 +59,7 @@
                 <tr>
                   <th>来源</th>
                   <th>模型</th>
-                  <th>总 Token 数</th>
+                  <th>总 Token 数 (M)</th>
                 </tr>
               </thead>
               <tbody id="day-models"></tbody>
@@ -72,7 +72,7 @@
               <thead>
                 <tr>
                   <th>日期</th>
-                  <th>总 Token 数</th>
+                  <th>总 Token 数 (M)</th>
                   <th>事件数</th>
                   <th>输入</th>
                   <th>输出</th>
