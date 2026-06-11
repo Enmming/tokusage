@@ -35,8 +35,8 @@
 
       <section class="stats-grid" id="stats-grid" aria-live="polite"></section>
 
-      <main class="dashboard-stack">
-        <section class="dashboard-row analysis-row">
+      <main class="dashboard-grid">
+        <div class="dashboard-left">
           <section class="panel heatmap-panel">
             <div class="panel-header">
               <button class="icon-button" type="button" id="previous-period" aria-label="上一周期">←</button>
@@ -47,52 +47,52 @@
             <div class="heatmap" id="heatmap"></div>
           </section>
 
-          <aside class="panel side-panel">
-            <h2 id="period-summary-title">月度统计</h2>
-            <div class="mini-stats" id="month-summary"></div>
-          </aside>
-        </section>
+          <section class="dashboard-row drilldown-row">
+            <section class="panel chart-panel">
+              <h2 id="line-chart-title">日曲线</h2>
+              <div class="line-chart" id="line-chart"></div>
+            </section>
 
-        <section class="dashboard-row drilldown-row">
-          <section class="panel chart-panel">
-            <h2 id="line-chart-title">日曲线</h2>
-            <div class="line-chart" id="line-chart"></div>
+            <section class="panel day-detail">
+              <h2 id="day-title">日详情</h2>
+              <div id="day-breakdown"></div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>来源</th>
+                    <th>模型</th>
+                    <th>总 Token 数</th>
+                  </tr>
+                </thead>
+                <tbody id="day-models"></tbody>
+              </table>
+            </section>
           </section>
 
-          <section class="panel day-detail">
-            <h2 id="day-title">日详情</h2>
-            <div id="day-breakdown"></div>
+          <section class="panel summary-table-panel">
+            <h2 id="summary-table-title">每日汇总</h2>
             <table>
               <thead>
                 <tr>
-                  <th>来源</th>
-                  <th>模型</th>
+                  <th>日期</th>
                   <th>总 Token 数</th>
+                  <th>事件数</th>
+                  <th>输入</th>
+                  <th>输出</th>
+                  <th>缓存读取</th>
+                  <th>缓存写入</th>
+                  <th>推理</th>
                 </tr>
               </thead>
-              <tbody id="day-models"></tbody>
+              <tbody id="summary-table"></tbody>
             </table>
           </section>
-        </section>
+        </div>
 
-        <section class="panel summary-table-panel">
-          <h2 id="summary-table-title">每日汇总</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>日期</th>
-                <th>总 Token 数</th>
-                <th>事件数</th>
-                <th>输入</th>
-                <th>输出</th>
-                <th>缓存读取</th>
-                <th>缓存写入</th>
-                <th>推理</th>
-              </tr>
-            </thead>
-            <tbody id="summary-table"></tbody>
-          </table>
-        </section>
+        <aside class="panel side-panel">
+          <h2 id="period-summary-title">月度统计</h2>
+          <div class="mini-stats" id="month-summary"></div>
+        </aside>
       </main>
     </div>
     <script src="/static/dashboard.js" defer></script>

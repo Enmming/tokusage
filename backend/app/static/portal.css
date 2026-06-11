@@ -272,9 +272,17 @@ td {
   margin-top: 8px;
 }
 
-.dashboard-stack {
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.34fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.dashboard-left {
   display: grid;
   gap: 18px;
+  min-width: 0;
 }
 
 .dashboard-row {
@@ -283,12 +291,13 @@ td {
   gap: 18px;
 }
 
-.analysis-row {
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.36fr);
-}
-
 .drilldown-row {
   grid-template-columns: minmax(0, 1fr) minmax(380px, 0.52fr);
+}
+
+.side-panel {
+  position: sticky;
+  top: 18px;
 }
 
 .panel {
@@ -487,8 +496,13 @@ td {
   }
 
   .stats-grid,
+  .dashboard-grid,
   .dashboard-row {
     grid-template-columns: 1fr;
+  }
+
+  .side-panel {
+    position: static;
   }
 
   .mini-stats {
