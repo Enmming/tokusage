@@ -159,11 +159,22 @@ async def test_dashboard_overview_calculates_token_metrics(client):
     }
     assert overview["peak_day"] == {"date": "2026-06-10", "total_tokens": 600}
     assert overview["active_days"] == 3
+    assert overview["period_days"] == 30
+    assert overview["days_in_year"] == 365
     assert overview["current_streak_days"] == 2
     assert overview["longest_streak_days"] == 2
     assert overview["peak_week"]["total_tokens"] == 900
     assert overview["highest_active_weekday"]["weekday"] == "Wednesday"
     assert overview["active_day_average_tokens"] == pytest.approx(333.333333)
+
+
+async def test_dashboard_overview_uses_year_period_days(client):
+    async with db.SessionLocal() as session:
+        user = await seed_dashboard_user(session)
+        overview = await dashboard.fetch_overview(session, user, year=2026)
+
+    assert overview["period_days"] == 365
+    assert overview["days_in_year"] == 365
 
 
 async def test_dashboard_calendar_returns_zero_filled_month_days(client):

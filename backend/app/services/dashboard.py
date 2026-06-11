@@ -179,6 +179,7 @@ async def fetch_overview(
     total_tokens = sum(row["total_tokens"] for row in daily_rows)
     event_count = sum(row["event_count"] for row in daily_rows)
     active_days = len(active_rows)
+    period_days = (date_to - date_from).days + 1
 
     return {
         "total_tokens": total_tokens,
@@ -188,6 +189,7 @@ async def fetch_overview(
         "peak_week": _peak_week(active_rows),
         "highest_active_weekday": _highest_active_weekday(active_rows),
         "active_days": active_days,
+        "period_days": period_days,
         "days_in_year": 366 if calendar.isleap(year) else 365,
         "current_streak_days": _current_streak(active_rows),
         "longest_streak_days": _longest_streak(active_rows),

@@ -98,10 +98,11 @@ function renderPeriodTitle() {
 }
 
 function renderStats(overview) {
+  const periodDays = overview.period_days || overview.days_in_year || 365;
   const cards = [
     ["总 Token 数 (M)", formatTokens(overview.total_tokens)],
     ["最常用模型", overview.most_used_model?.model || "-"],
-    ["活跃天数", `${overview.active_days || 0}/${overview.days_in_year || 365}`],
+    ["活跃天数", `${overview.active_days || 0}/${periodDays}`],
     ["连续天数", `${overview.current_streak_days || 0} 天`],
     ["峰值日", overview.peak_day ? overview.peak_day.date : "-", overview.peak_day ? `Tokens: ${formatTokens(overview.peak_day.total_tokens)}` : ""],
     ["活跃日均值 (M)", formatTokens(overview.active_day_average_tokens)],
