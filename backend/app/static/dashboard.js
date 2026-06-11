@@ -220,6 +220,13 @@ function isSelectedChartPoint(point) {
   return point.row.date.slice(0, 7) === state.selectedDate.slice(0, 7);
 }
 
+function chartTooltip(date, tokens) {
+  return `
+    <div class="chart-tooltip-title">${date}</div>
+    <div class="chart-tooltip-value">${tokens} Tokens</div>
+  `;
+}
+
 function renderLineChart() {
   const width = 900;
   const height = 240;
@@ -282,6 +289,11 @@ function renderLineChart() {
             cy="${point.y}"
             r="${point === peak || isSelectedChartPoint(point) ? 6 : 4}"
             data-date="${point.row.date}"
+            data-tooltip-date="${point.row.date}"
+            data-tooltip-tokens="${formatTokens(point.row.total_tokens)}"
+            tabindex="0"
+            role="button"
+            aria-label="${point.row.date} ${formatTokens(point.row.total_tokens)} Tokens"
           ><title>${point.row.label}: ${formatTokens(point.row.total_tokens)}</title></circle>
         `).join("")}
       </g>
@@ -293,7 +305,34 @@ function renderLineChart() {
   `;
   document.querySelectorAll("#line-chart circle").forEach((point) => {
     point.addEventListener("click", () => selectDate(point.dataset.date));
+    point.addEventListener("mouseenter", () => showChartTooltip(point));
+    point.addEventListener("mousemove", () => showChartTooltip(point));
+    point.addEventListener("mouseleave", hideChartTooltip);
+    point.addEventListener("focus", () => showChartTooltip(point));
+    point.addEventListener("blur", hideChartTooltip);
   });
+}
+
+function showChartTooltip(point) {
+  const container = $("#line-chart");
+  const tooltip = container.querySelector(".chart-tooltip") || document.createElement("div");
+  const box = container.getBoundingClientRect();
+  const cx = Number(point.getAttribute("cx"));
+  const cy = Number(point.getAttribute("cy"));
+  const svg = point.ownerSVGElement;
+  const viewBox = svg.viewBox.baseVal;
+  const x = (cx / viewBox.width) * box.width;
+  const y = (cy / viewBox.height) * box.height;
+
+  tooltip.className = "chart-tooltip";
+  tooltip.innerHTML = chartTooltip(point.dataset.tooltipDate || "", point.dataset.tooltipTokens || "0");
+  tooltip.style.left = `${Math.min(box.width - 120, Math.max(12, x - 60))}px`;
+  tooltip.style.top = `${Math.max(10, y - 58)}px`;
+  if (!tooltip.parentElement) container.appendChild(tooltip);
+}
+
+function hideChartTooltip() {
+  $("#line-chart").querySelector(".chart-tooltip")?.remove();
 }
 
 function renderSummaryTable() {

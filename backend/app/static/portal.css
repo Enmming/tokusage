@@ -381,6 +381,7 @@ td {
 }
 
 .line-chart {
+  position: relative;
   min-height: 240px;
   border: 1px solid #e1e8f2;
   border-radius: 8px;
@@ -467,6 +468,32 @@ td {
 .chart-peak-label text {
   fill: #ffffff;
   font-size: 12px;
+  font-weight: 900;
+}
+
+.chart-tooltip {
+  position: absolute;
+  z-index: 2;
+  min-width: 120px;
+  max-width: 180px;
+  padding: 8px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.94);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.18);
+  color: #ffffff;
+  pointer-events: none;
+}
+
+.chart-tooltip-title {
+  color: #cbd5e1;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chart-tooltip-value {
+  margin-top: 3px;
+  font-size: 14px;
   font-weight: 900;
 }
 
