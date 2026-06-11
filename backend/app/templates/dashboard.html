@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>tokusage Dashboard</title>
+    <link rel="stylesheet" href="/static/portal.css" />
+  </head>
+  <body>
+    <div class="dashboard-shell" data-dashboard-root>
+      <header class="topbar">
+        <div>
+          <div class="brand-mark">tokusage</div>
+          <h1>每日活跃</h1>
+        </div>
+        <div class="topbar-actions">
+          <div class="segmented" role="group" aria-label="视图">
+            <button class="segment active" type="button" data-view="month">月</button>
+            <button class="segment" type="button" data-view="year">年</button>
+          </div>
+          <div class="metric-pill">Tokens</div>
+          <div class="account">
+            <button class="avatar-button" type="button" id="avatar-button">{{ user_name[:1] }}</button>
+            <div class="account-menu" id="account-menu" hidden>
+              <strong id="profile-name">{{ user_name }}</strong>
+              <span id="profile-department" class="muted"></span>
+              <span id="profile-path" class="muted"></span>
+              <div class="token-box" id="profile-token"></div>
+              <button class="secondary-button" type="button" id="copy-token">复制 token</button>
+              <button class="link-button" type="button" id="logout">退出登录</button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <section class="stats-grid" id="stats-grid" aria-live="polite"></section>
+
+      <main class="dashboard-grid">
+        <section class="panel main-panel">
+          <div class="panel-header">
+            <button class="icon-button" type="button" id="previous-period" aria-label="上一周期">←</button>
+            <h2 id="period-title">加载中</h2>
+            <button class="icon-button" type="button" id="next-period" aria-label="下一周期">→</button>
+          </div>
+          <div class="legend"><span>少</span><div id="legend-scale"></div><span>多</span></div>
+          <div class="heatmap" id="heatmap"></div>
+          <h3>日曲线</h3>
+          <div class="line-chart" id="line-chart"></div>
+        </section>
+
+        <aside class="panel side-panel">
+          <h2>月度统计</h2>
+          <div class="mini-stats" id="month-summary"></div>
+          <section class="day-detail">
+            <h2 id="day-title">日详情</h2>
+            <div id="day-breakdown"></div>
+            <table>
+              <thead>
+                <tr>
+                  <th>来源</th>
+                  <th>模型</th>
+                  <th>总 Token 数</th>
+                </tr>
+              </thead>
+              <tbody id="day-models"></tbody>
+            </table>
+          </section>
+        </aside>
+      </main>
+
+      <section class="panel month-table-panel">
+        <h2>每月汇总</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>月</th>
+              <th>总 Token 数</th>
+              <th>事件数</th>
+              <th>活跃天数</th>
+              <th>最常用模型</th>
+            </tr>
+          </thead>
+          <tbody id="month-table"></tbody>
+        </table>
+      </section>
+    </div>
+    <script src="/static/dashboard.js" defer></script>
+  </body>
+</html>

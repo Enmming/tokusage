@@ -1,12 +1,17 @@
 """FastAPI entry point."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .db import init_schema
+from .routers import auth as portal_auth
+from .routers import dashboard as portal_dashboard
+from .routers import pages as portal_pages
 from .routes import router
 
 
@@ -17,6 +22,11 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="tokusage", lifespan=lifespan)
+app.mount(
+    "/static",
+    StaticFiles(directory=Path(__file__).parent / "static"),
+    name="static",
+)
 
 
 @app.middleware("http")
@@ -36,3 +46,6 @@ async def limit_request_size(request: Request, call_next):
 
 
 app.include_router(router)
+app.include_router(portal_auth.router)
+app.include_router(portal_dashboard.router)
+app.include_router(portal_pages.router)

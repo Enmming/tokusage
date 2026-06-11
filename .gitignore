@@ -3,6 +3,8 @@
 Cargo.lock.bak
 .DS_Store
 /scripts/mock-data/
+.superpowers/
+.worktrees/
 
 # Python backend
 backend/.venv/
