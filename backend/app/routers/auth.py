@@ -74,7 +74,7 @@ async def wecom_callback(
         max_age=settings.portal_session_days * 24 * 60 * 60,
         httponly=True,
         samesite="lax",
-        secure=False,
+        secure=settings.portal_cookie_secure,
     )
     return response
 
