@@ -159,11 +159,22 @@ async def test_dashboard_overview_calculates_token_metrics(client):
     }
     assert overview["peak_day"] == {"date": "2026-06-10", "total_tokens": 600}
     assert overview["active_days"] == 3
+    assert overview["period_days"] == 30
+    assert overview["days_in_year"] == 365
     assert overview["current_streak_days"] == 2
     assert overview["longest_streak_days"] == 2
     assert overview["peak_week"]["total_tokens"] == 900
     assert overview["highest_active_weekday"]["weekday"] == "Wednesday"
     assert overview["active_day_average_tokens"] == pytest.approx(333.333333)
+
+
+async def test_dashboard_overview_uses_year_period_days(client):
+    async with db.SessionLocal() as session:
+        user = await seed_dashboard_user(session)
+        overview = await dashboard.fetch_overview(session, user, year=2026)
+
+    assert overview["period_days"] == 365
+    assert overview["days_in_year"] == 365
 
 
 async def test_dashboard_calendar_returns_zero_filled_month_days(client):
@@ -220,6 +231,38 @@ async def test_dashboard_day_detail_groups_by_source_model_provider(client):
     ]
 
 
+async def test_dashboard_period_models_groups_current_range(client):
+    async with db.SessionLocal() as session:
+        user = await seed_dashboard_user(session)
+        models_by_period = await dashboard.fetch_period_models(
+            session,
+            user,
+            year=2026,
+            month=6,
+        )
+
+    assert models_by_period == [
+        {
+            "source": "claude",
+            "model": "claude-opus-4.7",
+            "provider": "anthropic",
+            "total_tokens": 600,
+        },
+        {
+            "source": "codex",
+            "model": "gpt-5",
+            "provider": "openai",
+            "total_tokens": 300,
+        },
+        {
+            "source": "claude",
+            "model": "claude-sonnet-4.6",
+            "provider": "anthropic",
+            "total_tokens": 100,
+        },
+    ]
+
+
 async def test_dashboard_routes_require_session(client):
     response = await client.get(
         "/api/dashboard/overview",
@@ -261,3 +304,19 @@ async def test_dashboard_day_detail_route_returns_grouped_rows(client):
     )
     assert response.status_code == 200
     assert response.json()["total_tokens"] == 600
+
+
+async def test_dashboard_period_models_route_returns_grouped_rows(client):
+    cookie = await seed_dashboard_session()
+    response = await client.get(
+        "/api/dashboard/period-models",
+        params={"year": 2026, "month": 6},
+        cookies={portal_sessions.SESSION_COOKIE_NAME: cookie},
+    )
+    assert response.status_code == 200
+    assert response.json()[0] == {
+        "source": "claude",
+        "model": "claude-opus-4.7",
+        "provider": "anthropic",
+        "total_tokens": 600,
+    }
