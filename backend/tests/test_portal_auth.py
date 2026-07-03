@@ -238,6 +238,50 @@ async def test_wecom_callback_creates_session_cookie(client, monkeypatch):
     assert response.status_code == 307
     assert response.headers["location"] == "/dashboard"
     assert f"{portal_sessions.SESSION_COOKIE_NAME}=" in response.headers["set-cookie"]
+    assert "secure" not in response.headers["set-cookie"].lower()
+
+
+async def test_wecom_callback_sets_secure_cookie_when_configured(client, monkeypatch):
+    async def fake_get_userinfo(self, code):
+        return {"userid": "alice"}
+
+    async def fake_get_user(self, userid):
+        return {
+            "name": "Alice",
+            "avatar": "https://example.com/a.png",
+            "department_path": ["公司", "平台部"],
+        }
+
+    monkeypatch.setattr(wecom.WeComClient, "get_userinfo", fake_get_userinfo)
+    monkeypatch.setattr(wecom.WeComClient, "get_user", fake_get_user)
+    monkeypatch.setattr(
+        wecom.WeComClient,
+        "resolve_department_path",
+        lambda self, profile: ["公司", "平台部"],
+    )
+    monkeypatch.setattr(wecom.WeComClient, "validate_config", lambda self: None)
+    monkeypatch.setattr(config.settings, "wecom_corp_id", "corp")
+    monkeypatch.setattr(config.settings, "portal_cookie_secure", True)
+
+    async with db.SessionLocal() as session:
+        state = await auth_flow.create_state(
+            session,
+            provider="wecom",
+            entry="qr",
+            return_to="/dashboard",
+        )
+
+    response = await client.get(
+        "/api/auth/wecom/callback",
+        params={"code": "code1", "state": state},
+        follow_redirects=False,
+    )
+    assert response.status_code == 307
+    assert "secure" in response.headers["set-cookie"].lower()
+
+
+def test_portal_cookie_secure_defaults_to_false():
+    assert config.Settings().portal_cookie_secure is False
 
 
 async def test_me_returns_profile_and_plain_token(client):

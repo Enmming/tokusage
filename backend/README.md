@@ -124,7 +124,12 @@ cp .env.prod.example .env
 $EDITOR .env
 ```
 
-Set at least a strong `POSTGRES_PASSWORD`. Pin
+Set a strong `POSTGRES_PASSWORD`, the WeCom app credentials
+(`TOKUSAGE_WECOM_CORP_ID`, `TOKUSAGE_WECOM_AGENT_ID`,
+`TOKUSAGE_WECOM_CORP_SECRET`, `TOKUSAGE_WECOM_REDIRECT_URI`), and a random
+`TOKUSAGE_PORTAL_SESSION_SECRET` (`openssl rand -hex 32`). The redirect URI
+must be an HTTPS URL on the trusted callback domain configured for the
+self-built app in the WeCom admin console. Pin
 `TOKUSAGE_BACKEND_IMAGE` to a release tag for predictable production deploys:
 
 ```env

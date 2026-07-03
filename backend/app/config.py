@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     wecom_redirect_uri: str = ""
     portal_session_secret: str = "dev-portal-session-secret-change-me"
     portal_session_days: int = 30
+    portal_cookie_secure: bool = False
 
 
 settings = Settings()
