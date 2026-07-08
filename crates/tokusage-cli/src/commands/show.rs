@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use chrono::{DateTime, Datelike, Local};
 use tokusage_core::{Client, TokenBreakdown, UnifiedMessage};
 
@@ -50,6 +50,62 @@ const MON: [&str; 12] = [
     "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct YearMonth {
+    year: i32,
+    month: u32,
+}
+
+impl YearMonth {
+    fn new(year: i32, month: u32) -> Result<Self> {
+        if year < 1 {
+            bail!("year must be positive");
+        }
+        if !(1..=12).contains(&month) {
+            bail!("month must be between 01 and 12");
+        }
+        Ok(Self { year, month })
+    }
+
+    fn previous(self) -> Self {
+        if self.month == 1 {
+            Self {
+                year: self.year - 1,
+                month: 12,
+            }
+        } else {
+            Self {
+                year: self.year,
+                month: self.month - 1,
+            }
+        }
+    }
+}
+
+fn parse_year_month(s: &str) -> Result<YearMonth> {
+    let bytes = s.as_bytes();
+    if bytes.len() != 7
+        || bytes[4] != b'-'
+        || !bytes[..4].iter().all(|b| b.is_ascii_digit())
+        || !bytes[5..].iter().all(|b| b.is_ascii_digit())
+    {
+        bail!("month must be formatted as YYYY-MM");
+    }
+
+    let year = s[..4].parse::<i32>()?;
+    let month = s[5..].parse::<u32>()?;
+    YearMonth::new(year, month)
+}
+
+fn month_label(ym: YearMonth, include_year: bool) -> String {
+    let month = MON[(ym.month - 1) as usize];
+    if include_year {
+        format!("{} {}", month, ym.year)
+    } else {
+        month.to_string()
+    }
+}
+
 /// Per-client this-month / last-month token totals.
 pub struct ClientMonths {
     pub client: Client,
@@ -89,13 +145,28 @@ fn days_in_month(year: i32, month: u32) -> u32 {
 /// current-month daily series (day 1..=today). Times are bucketed in local
 /// time; `now` is injected for testability.
 pub fn aggregate(messages: &[UnifiedMessage], now: DateTime<Local>) -> Report {
-    let cur_y = now.year();
-    let cur_m = now.month();
-    let (last_y, last_m) = if cur_m == 1 {
-        (cur_y - 1, 12)
-    } else {
-        (cur_y, cur_m - 1)
+    let target = YearMonth {
+        year: now.year(),
+        month: now.month(),
     };
+    aggregate_for_month_with_labels(messages, target, now, false)
+}
+
+fn aggregate_for_month(
+    messages: &[UnifiedMessage],
+    target: YearMonth,
+    now: DateTime<Local>,
+) -> Report {
+    aggregate_for_month_with_labels(messages, target, now, true)
+}
+
+fn aggregate_for_month_with_labels(
+    messages: &[UnifiedMessage],
+    target: YearMonth,
+    now: DateTime<Local>,
+    include_year_in_labels: bool,
+) -> Report {
+    let previous = target.previous();
 
     let order = [
         Client::Claude,
@@ -112,7 +183,7 @@ pub fn aggregate(messages: &[UnifiedMessage], now: DateTime<Local>) -> Report {
         })
         .collect();
 
-    let mut daily_current = vec![0i64; days_in_month(cur_y, cur_m) as usize];
+    let mut daily_current = vec![0i64; days_in_month(target.year, target.month) as usize];
 
     for m in messages {
         let local = m.timestamp.with_timezone(&Local);
@@ -121,24 +192,26 @@ pub fn aggregate(messages: &[UnifiedMessage], now: DateTime<Local>) -> Report {
             Some(s) => s,
             None => continue,
         };
-        if y == cur_y && mo == cur_m {
+        if y == target.year && mo == target.month {
             add(&mut slot.current, &m.tokens);
             let d = local.day() as usize;
             if d >= 1 && d <= daily_current.len() {
                 daily_current[d - 1] += m.tokens.total();
             }
-        } else if y == last_y && mo == last_m {
+        } else if y == previous.year && mo == previous.month {
             add(&mut slot.last, &m.tokens);
         }
     }
 
-    daily_current.truncate(now.day() as usize);
+    if target.year == now.year() && target.month == now.month() {
+        daily_current.truncate(now.day() as usize);
+    }
 
     Report {
         per_client,
         daily_current,
-        current_label: MON[(cur_m - 1) as usize].to_string(),
-        last_label: MON[(last_m - 1) as usize].to_string(),
+        current_label: month_label(target, include_year_in_labels),
+        last_label: month_label(previous, include_year_in_labels),
     }
 }
 
@@ -230,9 +303,13 @@ pub fn render(report: &Report) -> String {
     out
 }
 
-pub fn run() -> Result<()> {
+pub fn run(month: Option<&str>) -> Result<()> {
     let messages = crate::collect::collect(None)?;
-    let report = aggregate(&messages, Local::now());
+    let now = Local::now();
+    let report = match month {
+        Some(month) => aggregate_for_month(&messages, parse_year_month(month)?, now),
+        None => aggregate(&messages, now),
+    };
 
     let has_data = report
         .per_client
@@ -418,6 +495,60 @@ mod tests {
 
         // Daily series is truncated to "today" (Jan 5).
         assert_eq!(report.daily_current.len(), 5);
+    }
+
+    #[test]
+    fn aggregate_for_explicit_month_compares_against_previous_month() {
+        let now = Local.with_ymd_and_hms(2026, 7, 8, 12, 0, 0).unwrap();
+        let messages = vec![
+            msg(
+                Client::Claude,
+                Utc.with_ymd_and_hms(2026, 4, 10, 12, 0, 0).unwrap(),
+                100,
+            ), // target month
+            msg(
+                Client::Codex,
+                Utc.with_ymd_and_hms(2026, 3, 10, 12, 0, 0).unwrap(),
+                70,
+            ), // previous month
+            msg(
+                Client::Cursor,
+                Utc.with_ymd_and_hms(2026, 7, 1, 12, 0, 0).unwrap(),
+                999,
+            ), // excluded
+        ];
+
+        let report = aggregate_for_month(&messages, YearMonth::new(2026, 4).unwrap(), now);
+
+        assert_eq!(report.current_label, "Apr 2026");
+        assert_eq!(report.last_label, "Mar 2026");
+        assert_eq!(report.daily_current.len(), 30);
+        assert_eq!(report.daily_current.iter().sum::<i64>(), 100);
+
+        let claude = report
+            .per_client
+            .iter()
+            .find(|c| c.client == Client::Claude)
+            .unwrap();
+        assert_eq!(claude.current.total(), 100);
+
+        let codex = report
+            .per_client
+            .iter()
+            .find(|c| c.client == Client::Codex)
+            .unwrap();
+        assert_eq!(codex.last.total(), 70);
+    }
+
+    #[test]
+    fn parse_year_month_requires_four_digit_year_and_two_digit_month() {
+        assert_eq!(
+            parse_year_month("2026-04").unwrap(),
+            YearMonth::new(2026, 4).unwrap()
+        );
+        assert!(parse_year_month("2026-4").is_err());
+        assert!(parse_year_month("2026-13").is_err());
+        assert!(parse_year_month("Apr 2026").is_err());
     }
 
     #[test]

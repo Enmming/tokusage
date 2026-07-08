@@ -135,6 +135,7 @@ tokusage submit  # send the first payload immediately
 ```bash
 tokusage status       # show config, install state, queued retries, last run time
 tokusage show         # local chart of this vs last month token usage (no network)
+tokusage show --month 2026-04  # local chart for Apr 2026 vs Mar 2026
 tokusage submit       # run once on demand
 tokusage self-update  # fetch latest release and re-install
 ```
@@ -143,8 +144,9 @@ tokusage self-update  # fetch latest release and re-install
 
 `tokusage show` reads the same local Claude / Codex / Cursor / OpenCode session files as
 `submit` and renders a plain-text chart comparing **this calendar month** with
-**last month**. It runs fully offline — no login, no network — and never prints
-raw JSON.
+**last month**. Pass `--month YYYY-MM` to view an earlier month against the
+month before it, for example `tokusage show --month 2026-04`. It runs fully
+offline — no login, no network — and never prints raw JSON.
 
 ```text
 $ tokusage show
@@ -163,7 +165,8 @@ Jun split: in 0.2M · out 0.3M · cache 3.0M
 
 - One row per source; the two bars are this month vs last month, scaled against
   a shared maximum so heights are comparable across sources and months.
-- `Daily` is a sparkline of the current month's per-day totals, up to today.
+- `Daily` is a sparkline of the target month's per-day totals. The current
+  month is shown up to today; completed months show the full month.
 - `Total` sums all sources, with the month-over-month change in parentheses.
 - `split` breaks the current month into input / output / cache tokens.
 

@@ -58,8 +58,12 @@ enum Command {
     },
     /// Show config, last submit, and queue state
     Status,
-    /// Show a local token usage chart for this and last month
-    Show,
+    /// Show a local token usage chart
+    Show {
+        /// Target month to show, formatted as YYYY-MM
+        #[arg(long, value_name = "YYYY-MM")]
+        month: Option<String>,
+    },
     /// Check GitHub Releases and replace self with the latest version
     SelfUpdate,
     /// Remove launchd, Claude hook, manifest, and all tokusage files
@@ -85,8 +89,23 @@ fn main() -> Result<()> {
         Command::Login { api_url, token } => commands::login::run(api_url, token),
         Command::Submit { dry_run, source } => commands::submit::run(dry_run, source),
         Command::Status => commands::status::run(),
-        Command::Show => commands::show::run(),
+        Command::Show { month } => commands::show::run(month.as_deref()),
         Command::SelfUpdate => commands::self_update::run(),
         Command::SelfUninstall { yes } => commands::self_uninstall::run(yes),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_show_month_argument() {
+        let cli = Cli::try_parse_from(["tokusage", "show", "--month", "2026-04"]).unwrap();
+
+        match cli.command {
+            Command::Show { month } => assert_eq!(month.as_deref(), Some("2026-04")),
+            _ => panic!("expected show command"),
+        }
     }
 }
