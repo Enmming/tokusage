@@ -142,12 +142,16 @@ fn to_unified(
     let usage = message.usage?;
     let model = message.model?;
     let msg_id = message.id?;
-    let request_id = entry.request_id?;
+    let request_id = entry.request_id;
     let ts_str = entry.timestamp?;
     let timestamp = parse_timestamp(&ts_str)?;
+    let logical_key = match request_id.as_deref() {
+        Some(request_id) => format!("claude:{}:{}", request_id, msg_id),
+        None => format!("claude:{}:{}", relative_path, msg_id),
+    };
 
     Some(ParsedClaudeMessage {
-        logical_key: format!("claude:{}:{}", request_id, msg_id),
+        logical_key,
         message: UnifiedMessage {
             client: Client::Claude,
             event_key: format!("claude:{}", uuid),
@@ -238,7 +242,8 @@ mod tests {
     #[test]
     fn skips_non_assistant_and_missing_usage() {
         let tmp = TempDir::new().unwrap();
-        // user entries, permission-mode, and assistant without usage/requestId must all be skipped.
+        // user entries, permission-mode, assistant without usage, and entries
+        // without a stable uuid must all be skipped.
         let jsonl = r#"{"type":"user","timestamp":"2026-04-16T16:17:30Z"}
 {"type":"assistant","timestamp":"2026-04-16T16:17:41Z","requestId":"req_A","message":{"id":"msg_1","model":"claude-opus-4-7"}}
 {"type":"assistant","timestamp":"2026-04-16T16:18:00Z","message":{"id":"msg_2","model":"claude-sonnet-4-6","usage":{"input_tokens":1,"output_tokens":1}}}
@@ -247,6 +252,27 @@ mod tests {
 
         let messages = scan(tmp.path()).unwrap();
         assert_eq!(messages.len(), 0);
+    }
+
+    #[test]
+    fn parses_external_api_entries_without_request_id() {
+        let tmp = TempDir::new().unwrap();
+        let jsonl = r#"{"type":"assistant","uuid":"uuid-external-1","timestamp":"2026-04-16T16:17:41Z","userType":"external","sessionId":"session-1","message":{"id":"msg_external_1","model":"claude-sonnet-4-20250514","usage":{"input_tokens":8,"output_tokens":13,"cache_read_input_tokens":21,"cache_creation_input_tokens":34}}}"#;
+        write_jsonl(tmp.path(), "-C-Users-gd-project/session.jsonl", jsonl);
+
+        let messages = scan(tmp.path()).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].event_key, "claude:uuid-external-1");
+        assert_eq!(messages[0].model, "claude-sonnet-4-20250514");
+        assert_eq!(messages[0].tokens.input, 8);
+        assert_eq!(messages[0].tokens.output, 13);
+        assert_eq!(messages[0].tokens.cache_read, 21);
+        assert_eq!(messages[0].tokens.cache_write, 34);
+        assert_eq!(
+            messages[0].raw_payload["request_id"],
+            serde_json::Value::Null
+        );
+        assert_eq!(messages[0].raw_payload["message_id"], "msg_external_1");
     }
 
     #[test]
